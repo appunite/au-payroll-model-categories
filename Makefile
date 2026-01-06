@@ -1,10 +1,11 @@
-.PHONY: help install train run test docker-build docker-run deploy clean format lint lint-fix
+.PHONY: help install fetch-data train run test docker-build docker-run deploy clean format lint lint-fix
 
 # Default target
 help:
 	@echo "Invoice Classifier - Available Commands:"
 	@echo ""
 	@echo "  make install       - Install dependencies using uv"
+	@echo "  make fetch-data    - Fetch training data from PostgreSQL"
 	@echo "  make train         - Train the ML model"
 	@echo "  make run           - Run the API locally"
 	@echo "  make test          - Run tests"
@@ -25,12 +26,31 @@ install:
 	@echo "✓ Dependencies installed!"
 	@echo "Activate venv with: source .venv/bin/activate"
 
+# Fetch training data from PostgreSQL
+fetch-data:
+	@echo "Fetching training data from PostgreSQL..."
+	@if [ ! -f .env ]; then \
+		echo "ERROR: .env file not found."; \
+		echo "Please copy .env.example to .env and fill in your database credentials:"; \
+		echo "  cp .env.example .env"; \
+		echo "  # Edit .env with your database credentials"; \
+		exit 1; \
+	fi
+	uv run python src/fetch_training_data.py
+	@echo "✓ Data fetched successfully!"
+
+# Test database connection
+test-db:
+	@echo "Testing database connection..."
+	uv run python src/fetch_training_data.py --dry-run
+
 # Train model
 train:
 	@echo "Training invoice classifier..."
 	@if [ ! -f data/invoices_training_data.csv ]; then \
 		echo "ERROR: Training data not found at data/invoices_training_data.csv"; \
-		echo "Please export your SQL query results to this file first."; \
+		echo "Please fetch training data first:"; \
+		echo "  make fetch-data"; \
 		exit 1; \
 	fi
 	uv run python src/train_model.py
