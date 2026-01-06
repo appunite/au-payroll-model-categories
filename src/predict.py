@@ -40,7 +40,7 @@ def predict_expense_category(
     netPrice: float,
     grossPrice: float,
     currency: str,
-    title_normalized: str,
+    invoice_title: str,
     tin: str | None,
     issueDate: str | datetime,
 ) -> Dict[str, float]:
@@ -52,7 +52,7 @@ def predict_expense_category(
         netPrice: Net price excluding VAT
         grossPrice: Gross price including VAT
         currency: Currency code (USD, PLN, EUR, GBP, etc.)
-        title_normalized: Normalized invoice title/description
+        invoice_title: Full invoice title/description (e.g., "Adobe Systems Software Ireland Ltd")
         tin: Tax identification number (can be None)
         issueDate: Invoice issue date (YYYY-MM-DD or datetime)
 
@@ -66,7 +66,7 @@ def predict_expense_category(
         ...     netPrice=2500.0,
         ...     grossPrice=2500.0,
         ...     currency="PLN",
-        ...     title_normalized="meta",
+        ...     invoice_title="Meta Platforms Ireland Limited",
         ...     tin="",
         ...     issueDate="2024-08-29"
         ... )
@@ -104,7 +104,7 @@ def predict_expense_category(
         'ownerId': ownerId,
         'netPrice': netPrice,
         'currency': currency,
-        'title_normalized': title_normalized,
+        'invoice_title': invoice_title,
         'tin': tin if tin else '',  # Handle None
         'issueYear': issueYear,
         'issueMonth': issueMonth,
@@ -141,7 +141,7 @@ def predict_top_category(
     netPrice: float,
     grossPrice: float,
     currency: str,
-    title_normalized: str,
+    invoice_title: str,
     tin: str | None,
     issueDate: str | datetime,
 ) -> tuple[str, float]:
@@ -159,7 +159,7 @@ def predict_top_category(
     """
     probabilities = predict_expense_category(
         entityId, ownerId, netPrice, grossPrice, currency,
-        title_normalized, tin, issueDate
+        invoice_title, tin, issueDate
     )
 
     # Get top category
@@ -176,7 +176,7 @@ if __name__ == "__main__":
         netPrice=2500.0,
         grossPrice=2500.0,
         currency="PLN",
-        title_normalized="meta",
+        invoice_title="Meta Platforms Ireland Limited",
         tin="",
         issueDate="2024-08-29"
     )
@@ -191,7 +191,7 @@ if __name__ == "__main__":
         netPrice=2500.0,
         grossPrice=2500.0,
         currency="PLN",
-        title_normalized="meta",
+        invoice_title="Meta Platforms Ireland Limited",
         tin="",
         issueDate="2024-08-29"
     )

@@ -4,7 +4,7 @@
   "netPrice": 2500.0,
   "grossPrice": 3075.0,
   "currency": "PLN",
-  "title_normalized": "office rent january",
+  "invoice_title": "Regus Management Sp. z o.o. - Office rent",
   "tin": "1234567890",
   "issueDate": "2024-08-29"
 }

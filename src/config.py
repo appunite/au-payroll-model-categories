@@ -50,14 +50,11 @@ class Settings(BaseSettings):
 settings = Settings()
 
 # Feature configuration
-FEATURES = [
-    'entityId', 'ownerId', 'netPrice', 'currency', 'title_normalized',
-    'tin', 'issueYear', 'issueMonth', 'issueDay', 'VAT_Amount', 'VAT_Rate'
-]
-
+# Note: invoice_title is processed separately with TF-IDF vectorization
 NUMERICAL_FEATURES = ['netPrice', 'VAT_Amount', 'VAT_Rate']
-CATEGORICAL_FEATURES = ['entityId', 'ownerId', 'currency', 'title_normalized', 'tin']
+CATEGORICAL_FEATURES = ['entityId', 'ownerId', 'currency', 'tin']
 DATETIME_FEATURES = ['issueYear', 'issueMonth', 'issueDay']
+TEXT_FEATURE = 'invoice_title'  # Full invoice title for TF-IDF
 
 # Training configuration
 RANDOM_STATE = 42

@@ -4,7 +4,7 @@
   "netPrice": 99.0,
   "grossPrice": 99.0,
   "currency": "USD",
-  "title_normalized": "github subscription",
+  "invoice_title": "GitHub Inc - Team Subscription",
   "tin": null,
   "issueDate": "2024-11-15"
 }

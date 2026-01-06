@@ -4,7 +4,7 @@
   "netPrice": 450.0,
   "grossPrice": 553.5,
   "currency": "PLN",
-  "title_normalized": "electricity bill december",
+  "invoice_title": "PGE Polska Grupa Energetyczna - Electricity December",
   "tin": "9876543210",
   "issueDate": "2024-12-05"
 }
