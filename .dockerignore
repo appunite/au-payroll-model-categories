@@ -1,0 +1,31 @@
+# Git
+.git/
+.gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+.pytest_cache/
+
+# Data (training data not needed in container)
+data/*.csv
+data/*.json
+
+# Development
+.vscode/
+.idea/
+*.md
+tests/
+.env.local
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
+# OS
+.DS_Store
+Thumbs.db
