@@ -1,4 +1,8 @@
-"""Train invoice classification model with comprehensive evaluation."""
+"""Train invoice classification model with comprehensive evaluation.
+
+Uses TF-IDF vectorization of full invoice titles for rich text features,
+combined with numerical, categorical, and temporal features.
+"""
 
 import pandas as pd
 import joblib
@@ -6,25 +10,21 @@ import json
 from datetime import datetime
 from pathlib import Path
 from sklearn.model_selection import train_test_split, cross_val_score, StratifiedKFold
-from sklearn.preprocessing import OneHotEncoder, LabelEncoder
+from sklearn.preprocessing import LabelEncoder
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
+from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics import (
     accuracy_score,
     precision_recall_fscore_support,
     classification_report,
-    confusion_matrix,
 )
 import lightgbm as lgb
 
 from config import (
     MODEL_PATH,
     DATA_DIR,
-    FEATURES,
-    NUMERICAL_FEATURES,
-    CATEGORICAL_FEATURES,
-    DATETIME_FEATURES,
     RANDOM_STATE,
     TEST_SIZE,
     CV_FOLDS,
@@ -47,8 +47,8 @@ def load_and_prepare_data(csv_path: str) -> tuple:
     print(f"Loaded {len(df)} records")
     print(f"Classes distribution:\n{df['expenseCategory'].value_counts()}")
 
-    # Drop rows with missing title_normalized (critical feature)
-    df.dropna(subset=['title_normalized'], inplace=True)
+    # Drop rows with missing invoice_title (critical feature)
+    df.dropna(subset=['invoice_title'], inplace=True)
     print(f"After dropping missing titles: {len(df)} records")
 
     # Process issueDate
@@ -61,67 +61,84 @@ def load_and_prepare_data(csv_path: str) -> tuple:
     df['VAT_Amount'] = df['grossPrice'] - df['netPrice']
     df['VAT_Rate'] = (df['grossPrice'] / df['netPrice']) - 1
 
-    # Handle infinite values from VAT_Rate calculation
-    df['VAT_Rate'].replace([float('inf'), float('-inf')], 0, inplace=True)
+    # Handle infinite values
+    df.loc[df['VAT_Rate'].isin([float('inf'), float('-inf')]), 'VAT_Rate'] = 0
 
-    # Split features and target
-    X = df[FEATURES]
+    # Features for this model
+    numerical_features = ['netPrice', 'VAT_Amount', 'VAT_Rate']
+    categorical_features = ['entityId', 'ownerId', 'currency', 'tin']
+    datetime_features = ['issueYear', 'issueMonth', 'issueDay']
+    text_feature = 'invoice_title'
+
+    # Combine features
+    X = df[numerical_features + categorical_features + datetime_features + [text_feature]]
     y = df['expenseCategory']
 
-    return X, y, df
+    return X, y, df, numerical_features, categorical_features, datetime_features, text_feature
 
 
-def create_preprocessing_pipeline():
-    """Create sklearn preprocessing pipeline.
+def create_preprocessing_pipeline(numerical_features, categorical_features, datetime_features, text_feature):
+    """Create sklearn preprocessing pipeline with TF-IDF for text.
 
     Returns:
         ColumnTransformer for preprocessing
     """
-    # Numerical transformer: impute with median
+    # Numerical transformer
     numerical_transformer = SimpleImputer(strategy='median')
 
-    # Categorical transformer: impute + one-hot encode
-    # Using sparse=False for compatibility, handle_unknown='ignore' for robustness
+    # Categorical transformer (excluding title)
+    from sklearn.preprocessing import OneHotEncoder
     categorical_transformer = Pipeline(steps=[
         ('imputer', SimpleImputer(strategy='constant', fill_value='MISSING')),
-        ('onehot', OneHotEncoder(handle_unknown='ignore', sparse_output=False, max_categories=100))
+        ('onehot', OneHotEncoder(handle_unknown='ignore', sparse_output=False, max_categories=50))
     ])
+
+    # Text transformer: TF-IDF on invoice titles
+    # Key parameters:
+    # - max_features: limit vocab size for faster inference
+    # - ngram_range: capture 1-2 word phrases (e.g., "software license")
+    # - min_df: ignore very rare terms (appear in <3 documents)
+    # - max_df: ignore very common terms (appear in >80% of documents)
+    text_transformer = TfidfVectorizer(
+        max_features=200,  # Keep model light for fast cold starts
+        ngram_range=(1, 2),  # Unigrams and bigrams
+        min_df=3,  # Must appear in at least 3 documents
+        max_df=0.8,  # Must not appear in >80% of documents
+        lowercase=True,
+        strip_accents='unicode',  # Handle Polish characters
+        token_pattern=r'\b[a-zA-Z]{2,}\b',  # Words with 2+ letters
+    )
 
     # Combine transformers
     preprocessor = ColumnTransformer(
         transformers=[
-            ('num', numerical_transformer, NUMERICAL_FEATURES),
-            ('cat', categorical_transformer, CATEGORICAL_FEATURES),
-            ('datetime', 'passthrough', DATETIME_FEATURES)
+            ('num', numerical_transformer, numerical_features),
+            ('cat', categorical_transformer, categorical_features),
+            ('datetime', 'passthrough', datetime_features),
+            ('text', text_transformer, text_feature),
         ]
     )
 
     return preprocessor
 
 
-def train_and_evaluate(X, y):
-    """Train model with cross-validation and comprehensive evaluation.
+def train_and_evaluate(X, y, numerical_features, categorical_features, datetime_features, text_feature):
+    """Train model with TF-IDF and comprehensive evaluation."""
 
-    Args:
-        X: Features DataFrame
-        y: Target Series
-
-    Returns:
-        Trained pipeline and evaluation metrics
-    """
     print("\n" + "="*60)
     print("TRAINING INVOICE CLASSIFIER")
     print("="*60)
 
-    # Encode labels for LightGBM (requires 0-indexed integers)
+    # Encode labels
     label_encoder = LabelEncoder()
     y_encoded = label_encoder.fit_transform(y)
 
     # Create preprocessing pipeline
-    preprocessor = create_preprocessing_pipeline()
+    preprocessor = create_preprocessing_pipeline(
+        numerical_features, categorical_features, datetime_features, text_feature
+    )
 
-    # Create LightGBM classifier
-    # Note: LightGBM is faster and lighter than sklearn's GradientBoosting
+    # Create model
     model = lgb.LGBMClassifier(**LGBM_PARAMS)
 
     # Create full pipeline
@@ -130,7 +147,7 @@ def train_and_evaluate(X, y):
         ('model', model)
     ])
 
-    # Add label encoder to pipeline for saving
+    # Store label encoder
     pipeline.label_encoder = label_encoder
 
     # Cross-validation
@@ -141,7 +158,7 @@ def train_and_evaluate(X, y):
     print(f"Cross-validation scores: {cv_scores}")
     print(f"Mean CV Accuracy: {cv_scores.mean():.4f} (+/- {cv_scores.std() * 2:.4f})")
 
-    # Train-test split for detailed evaluation
+    # Train-test split
     print("\nSplitting data for train/test evaluation...")
     X_train, X_test, y_train, y_test = train_test_split(
         X, y_encoded, test_size=TEST_SIZE, random_state=RANDOM_STATE, stratify=y_encoded
@@ -150,11 +167,11 @@ def train_and_evaluate(X, y):
     print(f"Training set size: {len(X_train)}")
     print(f"Test set size: {len(X_test)}")
 
-    # Train on training set
+    # Train
     print("\nTraining model...")
     pipeline.fit(X_train, y_train)
 
-    # Evaluate on test set
+    # Evaluate
     print("\nEvaluating on test set...")
     y_pred = pipeline.predict(X_test)
 
@@ -164,7 +181,7 @@ def train_and_evaluate(X, y):
         y_test, y_pred, average='weighted', zero_division=0
     )
 
-    # Get class names back for reporting
+    # Get class names
     class_names = label_encoder.classes_
 
     print("\n" + "="*60)
@@ -178,17 +195,14 @@ def train_and_evaluate(X, y):
     print("\nDetailed Classification Report:")
     print(classification_report(y_test, y_pred, target_names=class_names, zero_division=0))
 
-    # Feature importance (if available)
-    if hasattr(model, 'feature_importances_'):
-        print("\nTop 10 Most Important Features:")
-        feature_names = pipeline.named_steps['preprocessor'].get_feature_names_out()
-        importances = model.feature_importances_
-        indices = importances.argsort()[-10:][::-1]
+    # Show TF-IDF features learned
+    print("\nTop 20 TF-IDF terms learned:")
+    vectorizer = pipeline.named_steps['preprocessor'].named_transformers_['text']
+    feature_names = vectorizer.get_feature_names_out()
+    print(f"Total TF-IDF features: {len(feature_names)}")
+    print("Sample terms:", ', '.join(feature_names[:20]))
 
-        for i, idx in enumerate(indices, 1):
-            print(f"{i}. {feature_names[idx]}: {importances[idx]:.4f}")
-
-    # Compile metrics
+    # Metrics
     metrics = {
         'training_date': datetime.now().isoformat(),
         'n_samples': len(X),
@@ -203,9 +217,13 @@ def train_and_evaluate(X, y):
         'test_precision': float(precision),
         'test_recall': float(recall),
         'test_f1': float(f1),
+        'features': {
+            'text_features': len(feature_names),
+            'total_features': 'TF-IDF + numerical + categorical',
+        }
     }
 
-    # Train on full dataset for deployment
+    # Train on full dataset
     print("\n" + "="*60)
     print("TRAINING FINAL MODEL ON FULL DATASET")
     print("="*60)
@@ -215,12 +233,8 @@ def train_and_evaluate(X, y):
 
 
 def save_model_and_metrics(pipeline, metrics):
-    """Save trained model and evaluation metrics.
+    """Save trained model and metrics."""
 
-    Args:
-        pipeline: Trained sklearn pipeline
-        metrics: Dictionary of evaluation metrics
-    """
     print(f"\nSaving model to {MODEL_PATH}...")
     joblib.dump(pipeline, MODEL_PATH)
 
@@ -238,26 +252,22 @@ def save_model_and_metrics(pipeline, metrics):
 
 
 def main(csv_file: str = "invoices_training_data.csv"):
-    """Main training pipeline.
-
-    Args:
-        csv_file: Name of CSV file in data directory
-    """
+    """Main training pipeline."""
     csv_path = DATA_DIR / csv_file
 
     if not csv_path.exists():
         raise FileNotFoundError(
             f"Training data not found at {csv_path}\n"
-            f"Please export your SQL query results to {csv_path}"
+            f"Please run: make fetch-data"
         )
 
-    # Load and prepare data
-    X, y, df = load_and_prepare_data(csv_path)
+    # Load data
+    X, y, df, numerical_features, categorical_features, datetime_features, text_feature = load_and_prepare_data(csv_path)
 
     # Train and evaluate
-    pipeline, metrics = train_and_evaluate(X, y)
+    pipeline, metrics = train_and_evaluate(X, y, numerical_features, categorical_features, datetime_features, text_feature)
 
-    # Save model and metrics
+    # Save
     save_model_and_metrics(pipeline, metrics)
 
     print("\n✓ Training complete! You can now deploy the model.")

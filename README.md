@@ -4,8 +4,10 @@ Fast ML-based invoice expense category prediction API, optimized for deployment 
 
 ## Features
 
+- **High Accuracy**: 83.17% accuracy on 33 expense categories using TF-IDF text features
 - **Fast Cold Starts**: Optimized for serverless deployment (~3-5 second cold starts)
 - **LightGBM Model**: Faster and lighter than traditional gradient boosting
+- **TF-IDF Text Processing**: Extracts semantic meaning from full invoice titles
 - **REST API**: Simple JSON in/out interface via FastAPI
 - **Comprehensive Metrics**: Detailed model evaluation and monitoring
 - **Free Tier Friendly**: Designed to run within Google Cloud Run free tier (20-50 requests/day)
@@ -150,7 +152,7 @@ curl -X POST http://localhost:8080/predict \
     "netPrice": 2500.0,
     "grossPrice": 3075.0,
     "currency": "PLN",
-    "title_normalized": "office rent january",
+    "invoice_title": "Adobe Systems Software Ireland Ltd",
     "tin": "1234567890",
     "issueDate": "2024-08-29"
   }'
@@ -236,7 +238,7 @@ Predict expense category for an invoice.
   "netPrice": 2500.0,
   "grossPrice": 3075.0,
   "currency": "PLN",
-  "title_normalized": "office rent",
+  "invoice_title": "Adobe Systems Software Ireland Ltd",
   "tin": "1234567890",
   "issueDate": "2024-08-29"
 }
@@ -271,12 +273,17 @@ After training, check `models/model_metrics.json` for detailed metrics:
 Example metrics:
 ```json
 {
-  "training_date": "2026-01-06T22:00:00",
-  "n_samples": 5000,
-  "cv_mean_accuracy": 0.92,
-  "test_accuracy": 0.91,
-  "test_precision": 0.90,
-  "test_f1": 0.91
+  "training_date": "2026-01-06T23:56:41",
+  "n_samples": 4723,
+  "n_classes": 33,
+  "cv_mean_accuracy": 0.8232,
+  "test_accuracy": 0.8317,
+  "test_precision": 0.8364,
+  "test_f1": 0.8323,
+  "features": {
+    "text_features": 200,
+    "total_features": "TF-IDF + numerical + categorical"
+  }
 }
 ```
 

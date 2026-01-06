@@ -32,7 +32,7 @@ class InvoiceRequest(BaseModel):
     netPrice: float = Field(..., gt=0, description="Net price (excluding VAT)")
     grossPrice: float = Field(..., gt=0, description="Gross price (including VAT)")
     currency: str = Field(..., min_length=3, max_length=3, description="Currency code (e.g., PLN, USD, EUR)")
-    title_normalized: str = Field(..., min_length=1, description="Normalized invoice title/description")
+    invoice_title: str = Field(..., min_length=1, description="Full invoice title/description")
     tin: Optional[str] = Field(None, description="Tax identification number (optional)")
     issueDate: str = Field(..., description="Invoice issue date (YYYY-MM-DD)")
 
@@ -44,7 +44,7 @@ class InvoiceRequest(BaseModel):
                 "netPrice": 2500.0,
                 "grossPrice": 3075.0,
                 "currency": "PLN",
-                "title_normalized": "office rent january",
+                "invoice_title": "Adobe Systems Software Ireland Ltd",
                 "tin": "1234567890",
                 "issueDate": "2024-08-29"
             }
@@ -143,7 +143,7 @@ async def predict(invoice: InvoiceRequest):
         HTTPException: If prediction fails
     """
     try:
-        logger.info(f"Predicting category for invoice: {invoice.title_normalized[:50]}...")
+        logger.info(f"Predicting category for invoice: {invoice.invoice_title[:50]}...")
 
         # Get predictions
         probabilities = predict_expense_category(
@@ -152,7 +152,7 @@ async def predict(invoice: InvoiceRequest):
             netPrice=invoice.netPrice,
             grossPrice=invoice.grossPrice,
             currency=invoice.currency,
-            title_normalized=invoice.title_normalized,
+            invoice_title=invoice.invoice_title,
             tin=invoice.tin,
             issueDate=invoice.issueDate,
         )

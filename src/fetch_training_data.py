@@ -20,6 +20,7 @@ SELECT
     i."grossPrice",
     i.currency,
 
+    i.title as "invoice_title",
     i."titleNormalized" as "title_normalized",
 
     regexp_replace(
