@@ -37,6 +37,9 @@ Thumbs.db
 .coverage
 htmlcov/
 
+# Ruff
+.ruff_cache/
+
 # Environment
 .env
 .env.local

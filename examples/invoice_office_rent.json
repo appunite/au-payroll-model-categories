@@ -1,0 +1,10 @@
+{
+  "entityId": "00000000-0000-0000-0000-000000000001",
+  "ownerId": "00000000-0000-0000-0000-000000000002",
+  "netPrice": 2500.0,
+  "grossPrice": 3075.0,
+  "currency": "PLN",
+  "title_normalized": "office rent january",
+  "tin": "1234567890",
+  "issueDate": "2024-08-29"
+}

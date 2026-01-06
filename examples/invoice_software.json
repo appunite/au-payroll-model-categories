@@ -1,0 +1,10 @@
+{
+  "entityId": "00000000-0000-0000-0000-000000000001",
+  "ownerId": "00000000-0000-0000-0000-000000000002",
+  "netPrice": 99.0,
+  "grossPrice": 99.0,
+  "currency": "USD",
+  "title_normalized": "github subscription",
+  "tin": null,
+  "issueDate": "2024-11-15"
+}

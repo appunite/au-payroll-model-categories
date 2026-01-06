@@ -1,0 +1,10 @@
+{
+  "entityId": "00000000-0000-0000-0000-000000000001",
+  "ownerId": "00000000-0000-0000-0000-000000000002",
+  "netPrice": 450.0,
+  "grossPrice": 553.5,
+  "currency": "PLN",
+  "title_normalized": "electricity bill december",
+  "tin": "9876543210",
+  "issueDate": "2024-12-05"
+}

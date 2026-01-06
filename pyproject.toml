@@ -20,6 +20,7 @@ dev = [
     "pytest>=7.4.0",
     "httpx>=0.26.0",
     "ipython>=8.20.0",
+    "ruff>=0.1.0",
 ]
 
 [build-system]
@@ -31,4 +32,28 @@ dev-dependencies = [
     "pytest>=7.4.0",
     "httpx>=0.26.0",
     "ipython>=8.20.0",
+    "ruff>=0.1.0",
 ]
+
+[tool.ruff]
+# Ruff configuration
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "C4", # flake8-comprehensions
+    "UP", # pyupgrade
+]
+ignore = [
+    "E501",  # line too long (handled by formatter)
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
