@@ -1,4 +1,4 @@
-.PHONY: help install train run test docker-build docker-run deploy clean
+.PHONY: help install train run test docker-build docker-run deploy clean format lint lint-fix
 
 # Default target
 help:
@@ -8,6 +8,9 @@ help:
 	@echo "  make train         - Train the ML model"
 	@echo "  make run           - Run the API locally"
 	@echo "  make test          - Run tests"
+	@echo "  make format        - Format code with ruff"
+	@echo "  make lint          - Lint code with ruff"
+	@echo "  make lint-fix      - Lint and auto-fix issues"
 	@echo "  make docker-build  - Build Docker image"
 	@echo "  make docker-run    - Run Docker container locally"
 	@echo "  make deploy        - Deploy to Google Cloud Run"
@@ -118,10 +121,14 @@ clean:
 	rm -rf .venv/
 	@echo "✓ Cleaned!"
 
-# Format code (optional, requires ruff)
+# Format code with ruff
 format:
-	uvx ruff format src/ tests/
+	uv run ruff format src/ tests/
 
-# Lint code (optional, requires ruff)
+# Lint code with ruff
 lint:
-	uvx ruff check src/ tests/
+	uv run ruff check src/ tests/
+
+# Lint and fix
+lint-fix:
+	uv run ruff check --fix src/ tests/
