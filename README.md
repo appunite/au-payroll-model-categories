@@ -20,6 +20,10 @@ Fast ML-based invoice expense category prediction API, optimized for deployment 
 - PostgreSQL database with invoice data
 - Docker (for containerization)
 - Google Cloud CLI (for deployment)
+- **macOS only**: OpenMP library for LightGBM
+  ```bash
+  brew install libomp
+  ```
 
 ### Installation
 
@@ -95,9 +99,25 @@ uv run python src/fetch_training_data.py --query-file my_query.sql
 
    **Note**: The query is embedded in `src/fetch_training_data.py` and can be customized if needed.
 
-3. **Train the model**
+3. **Analyze and filter data (recommended)**
 
    ```bash
+   # Analyze data distribution
+   make analyze-data
+
+   # Apply hybrid filtering (merges rare categories to parent)
+   uv run python src/analyze_data.py --apply-filter hybrid
+   ```
+
+   This creates `data/invoices_training_data_filtered.csv` with better class balance.
+
+4. **Train the model**
+
+   ```bash
+   # Option A: Train with filtered data (recommended)
+   uv run python src/train_model.py invoices_training_data_filtered.csv
+
+   # Option B: Train with original data
    make train
    ```
 
@@ -107,6 +127,8 @@ uv run python src/fetch_training_data.py --query-file my_query.sql
    - Train on full dataset
    - Save model to `models/invoice_classifier.joblib`
    - Save metrics to `models/model_metrics.json`
+
+   **Recommended**: Use filtered data for ~1% better accuracy and 8% smaller model.
 
 ### Running Locally
 
