@@ -17,6 +17,7 @@ Fast ML-based invoice expense category prediction API, optimized for deployment 
 
 - Python 3.11+
 - [uv](https://docs.astral.sh/uv/) package manager
+- PostgreSQL database with invoice data
 - Docker (for containerization)
 - Google Cloud CLI (for deployment)
 
@@ -40,42 +41,61 @@ source .venv/bin/activate
 # Copy example environment file
 cp .env.example .env
 
-# Edit .env with your configuration (optional)
-# Most defaults work out of the box
+# Edit .env with your PostgreSQL database credentials
+# Required fields:
+# - DATABASE_URL (or DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD)
+```
+
+**Customizing the SQL Query** (Optional):
+
+If your database schema differs, you can modify the query in `src/fetch_training_data.py` or provide a custom query file:
+
+```bash
+# Create custom query file
+cat > my_query.sql << 'EOF'
+SELECT
+  entity_id as "entityId",
+  owner_id as "ownerId",
+  -- ... your custom query
+FROM your_invoices_table
+WHERE ...
+EOF
+
+# Fetch data with custom query
+uv run python src/fetch_training_data.py --query-file my_query.sql
 ```
 
 ### Training the Model
 
-1. **Export training data from your database**
+1. **Configure database credentials**
 
-   Run your SQL query and export results to `data/invoices_training_data.csv`:
+   ```bash
+   # Copy environment template
+   cp .env.example .env
 
-   ```sql
-   SELECT
-       i."entityId",
-       i."ownerId",
-       i."issueDate",
-       i."netPrice",
-       i."grossPrice",
-       i.currency,
-       i."titleNormalized" as "title_normalized",
-       regexp_replace(
-           regexp_replace(
-               CASE
-                   WHEN bt."beneficiaryTin" IS NOT NULL THEN bt."beneficiaryTin"
-                   WHEN length(t."documentData") > 0 THEN json_entity.value->>'mentionText'
-                   ELSE NULL
-               END,
-               '^\s*PL', '', 'gi'
-           ),
-           '[\s\-–—]', '', 'g'
-       ) AS tin,
-       i."expenseCategory"
-   FROM invoices i
-   -- ... (rest of your query)
+   # Edit .env and add your PostgreSQL credentials
+   # DATABASE_URL=postgresql://user:password@host:5432/database
    ```
 
-2. **Train the model**
+2. **Fetch training data from PostgreSQL**
+
+   ```bash
+   # Test database connection first (optional)
+   make test-db
+
+   # Fetch training data
+   make fetch-data
+   ```
+
+   This will:
+   - Connect to your PostgreSQL database
+   - Execute the training data query (see `src/fetch_training_data.py`)
+   - Save results to `data/invoices_training_data.csv`
+   - Show data statistics and category distribution
+
+   **Note**: The query is embedded in `src/fetch_training_data.py` and can be customized if needed.
+
+3. **Train the model**
 
    ```bash
    make train
@@ -243,18 +263,22 @@ Example metrics:
 ```
 invoice-classifier/
 ├── src/
-│   ├── config.py          # Configuration and settings
-│   ├── train_model.py     # Model training script
-│   ├── predict.py         # Prediction logic
-│   └── main.py            # FastAPI application
+│   ├── config.py              # Configuration and settings
+│   ├── fetch_training_data.py # Fetch data from PostgreSQL
+│   ├── train_model.py         # Model training script
+│   ├── predict.py             # Prediction logic
+│   └── main.py                # FastAPI application
 ├── tests/
-│   └── test_api.py        # API tests
-├── models/                # Trained models (gitignored)
-├── data/                  # Training data (gitignored)
-├── Dockerfile             # Optimized container image
-├── Makefile               # Convenient commands
-├── pyproject.toml         # Python dependencies
-└── .env.example           # Environment variables template
+│   └── test_api.py            # API tests
+├── examples/
+│   ├── invoice_*.json         # Example requests
+│   └── test_api.sh            # Test script
+├── models/                    # Trained models (gitignored)
+├── data/                      # Training data (gitignored)
+├── Dockerfile                 # Optimized container image
+├── Makefile                   # Convenient commands
+├── pyproject.toml             # Python dependencies
+└── .env.example               # Environment variables template
 ```
 
 ## Development
