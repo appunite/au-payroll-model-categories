@@ -1,4 +1,4 @@
-.PHONY: help install fetch-data train run test docker-build docker-run deploy clean format lint lint-fix
+.PHONY: help install fetch-data analyze-data train run test docker-build docker-run deploy clean format lint lint-fix
 
 # Default target
 help:
@@ -6,6 +6,7 @@ help:
 	@echo ""
 	@echo "  make install       - Install dependencies using uv"
 	@echo "  make fetch-data    - Fetch training data from PostgreSQL"
+	@echo "  make analyze-data  - Analyze data distribution and get recommendations"
 	@echo "  make train         - Train the ML model"
 	@echo "  make run           - Run the API locally"
 	@echo "  make test          - Run tests"
@@ -43,6 +44,16 @@ fetch-data:
 test-db:
 	@echo "Testing database connection..."
 	uv run python src/fetch_training_data.py --dry-run
+
+# Analyze data distribution
+analyze-data:
+	@echo "Analyzing data distribution..."
+	@if [ ! -f data/invoices_training_data.csv ]; then \
+		echo "ERROR: Training data not found."; \
+		echo "Please fetch data first: make fetch-data"; \
+		exit 1; \
+	fi
+	uv run python src/analyze_data.py
 
 # Train model
 train:

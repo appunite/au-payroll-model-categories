@@ -74,6 +74,7 @@ LGBM_PARAMS = {
     'random_state': RANDOM_STATE,
     'n_jobs': 1,  # Single thread for consistent cold start performance
     'verbose': -1,
+    'class_weight': 'balanced',  # Handle class imbalance
 }
 
 # Export commonly used settings
