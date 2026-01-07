@@ -129,20 +129,9 @@ deploy:
 		--timeout 60 \
 		--port 8080
 	@echo "✓ Deployment complete!"
-
-# Set up Cloud Scheduler for keep-warm pings
-setup-scheduler:
-	@echo "Setting up Cloud Scheduler to keep service warm..."
-	@read -p "Enter Cloud Run service URL: " SERVICE_URL; \
-	read -p "Enter GCP region [us-central1]: " REGION; \
-	REGION=$${REGION:-us-central1}; \
-	gcloud scheduler jobs create http keep-payroll-invoice-classifier-warm \
-		--schedule="*/5 * * * *" \
-		--uri="$$SERVICE_URL/health" \
-		--http-method=GET \
-		--location=$$REGION \
-		--description="Keep payroll invoice classifier warm to avoid cold starts"
-	@echo "✓ Scheduler created! Service will be pinged every 5 minutes."
+	@echo ""
+	@echo "NOTE: To avoid cold starts, implement keep-alive pings from your main application."
+	@echo "See README for implementation examples."
 
 # Clean generated files
 clean:
