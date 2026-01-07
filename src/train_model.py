@@ -7,9 +7,13 @@ combined with numerical, categorical, and temporal features.
 import pandas as pd
 import joblib
 import json
+import warnings
 from datetime import datetime
 from pathlib import Path
 from sklearn.model_selection import train_test_split, cross_val_score, StratifiedKFold
+
+# Suppress benign sklearn warning about feature names in LightGBM pipeline
+warnings.filterwarnings('ignore', message='X does not have valid feature names')
 from sklearn.preprocessing import LabelEncoder
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
@@ -22,7 +26,7 @@ from sklearn.metrics import (
 )
 import lightgbm as lgb
 
-from config import (
+from src.config import (
     MODEL_PATH,
     DATA_DIR,
     RANDOM_STATE,

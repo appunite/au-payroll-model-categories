@@ -6,8 +6,8 @@ from typing import Dict, Optional
 from datetime import datetime
 import logging
 
-from predict import predict_expense_category, load_model
-from config import MODEL_VERSION, API_HOST, API_PORT, LOG_LEVEL
+from src.predict import predict_expense_category, load_model
+from src.config import MODEL_VERSION, API_HOST, API_PORT, LOG_LEVEL
 
 # Configure logging
 logging.basicConfig(

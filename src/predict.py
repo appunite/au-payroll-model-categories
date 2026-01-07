@@ -2,10 +2,14 @@
 
 import pandas as pd
 import joblib
+import warnings
 from typing import Dict
 from datetime import datetime
 
-from config import MODEL_PATH
+# Suppress benign sklearn warning about feature names in LightGBM pipeline
+warnings.filterwarnings('ignore', message='X does not have valid feature names')
+
+from src.config import MODEL_PATH
 
 
 # Global model cache (loaded once on startup)
@@ -98,19 +102,24 @@ def predict_expense_category(
     if VAT_Rate in [float('inf'), float('-inf')]:
         VAT_Rate = 0
 
-    # Create input DataFrame with exact feature names
+    # Create input DataFrame with exact feature names and order from training
+    # Order must match: numerical -> categorical -> datetime -> text
     input_data = pd.DataFrame([{
+        # Numerical features
+        'netPrice': netPrice,
+        'VAT_Amount': VAT_Amount,
+        'VAT_Rate': VAT_Rate,
+        # Categorical features
         'entityId': entityId,
         'ownerId': ownerId,
-        'netPrice': netPrice,
         'currency': currency,
-        'invoice_title': invoice_title,
         'tin': tin if tin else '',  # Handle None
+        # Datetime features
         'issueYear': issueYear,
         'issueMonth': issueMonth,
         'issueDay': issueDay,
-        'VAT_Amount': VAT_Amount,
-        'VAT_Rate': VAT_Rate,
+        # Text feature
+        'invoice_title': invoice_title,
     }])
 
     # Get prediction probabilities
