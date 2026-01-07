@@ -371,7 +371,7 @@ make setup-scheduler
 ### Out of memory
 ```bash
 # Increase memory in deployment
-gcloud run services update invoice-classifier --memory 1Gi
+gcloud run services update payroll-invoice-classifier --memory 1Gi
 ```
 
 ### Port conflicts locally
