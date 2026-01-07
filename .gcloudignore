@@ -21,12 +21,14 @@ venv/
 data/*.csv
 data/*.json
 
-# Development
+# Development files
 .vscode/
 .idea/
 *.md
 tests/
+.env
 .env.local
+.env.example
 
 # Build artifacts
 dist/
@@ -36,3 +38,9 @@ build/
 # OS
 .DS_Store
 Thumbs.db
+
+# Examples (not needed in production)
+examples/
+
+# DO NOT IGNORE: Models are required for inference
+# models/ directory and *.joblib files MUST be included
