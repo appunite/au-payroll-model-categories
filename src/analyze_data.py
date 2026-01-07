@@ -3,7 +3,7 @@
 import pandas as pd
 import sys
 from pathlib import Path
-from config import DATA_DIR
+from src.config import DATA_DIR
 
 
 def analyze_category_distribution(csv_file: str = "invoices_training_data.csv"):

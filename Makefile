@@ -23,8 +23,9 @@ help:
 install:
 	@echo "Installing dependencies with uv..."
 	uv venv
-	uv pip install -r pyproject.toml
+	uv pip install -e ".[dev]"
 	@echo "✓ Dependencies installed!"
+	@echo "✓ Package installed in editable mode"
 	@echo "Activate venv with: source .venv/bin/activate"
 
 # Fetch training data from PostgreSQL

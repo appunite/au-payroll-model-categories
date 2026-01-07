@@ -8,7 +8,7 @@ import pandas as pd
 import psycopg
 from psycopg.rows import dict_row
 
-from config import DATA_DIR, settings
+from src.config import DATA_DIR, settings
 
 # SQL query from user's original request
 TRAINING_DATA_QUERY = """
