@@ -111,8 +111,8 @@ deploy:
 		echo "ERROR: Model not found. Please run 'make train' first."; \
 		exit 1; \
 	fi
-	@read -p "Enter Cloud Run service name [invoice-classifier]: " SERVICE_NAME; \
-	SERVICE_NAME=$${SERVICE_NAME:-invoice-classifier}; \
+	@read -p "Enter Cloud Run service name [payroll-invoice-classifier]: " SERVICE_NAME; \
+	SERVICE_NAME=$${SERVICE_NAME:-payroll-invoice-classifier}; \
 	read -p "Enter GCP region [us-central1]: " REGION; \
 	REGION=$${REGION:-us-central1}; \
 	echo "Deploying $$SERVICE_NAME to $$REGION..."; \
@@ -136,12 +136,12 @@ setup-scheduler:
 	@read -p "Enter Cloud Run service URL: " SERVICE_URL; \
 	read -p "Enter GCP region [us-central1]: " REGION; \
 	REGION=$${REGION:-us-central1}; \
-	gcloud scheduler jobs create http keep-invoice-classifier-warm \
+	gcloud scheduler jobs create http keep-payroll-invoice-classifier-warm \
 		--schedule="*/5 * * * *" \
 		--uri="$$SERVICE_URL/health" \
 		--http-method=GET \
 		--location=$$REGION \
-		--description="Keep invoice classifier warm to avoid cold starts"
+		--description="Keep payroll invoice classifier warm to avoid cold starts"
 	@echo "✓ Scheduler created! Service will be pinged every 5 minutes."
 
 # Clean generated files
