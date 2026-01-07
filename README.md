@@ -210,26 +210,54 @@ gcloud run deploy payroll-invoice-classifier \
 - **Timeout**: 60s (allows for cold start initialization)
 - **Port**: 8080 (FastAPI default)
 
-### 3. Set Up Keep-Warm Scheduler (Optional but Recommended)
+### 3. Integrate with Your Main Application (Recommended)
 
-To minimize cold starts for your low-traffic use case (~20-50 requests/day):
+To avoid cold starts, implement keep-alive pings from your main application.
 
-```bash
-# After deployment, set up Cloud Scheduler
-make setup-scheduler
-```
-
-This creates a Cloud Scheduler job that pings your service every 5 minutes to keep it warm.
-
-**Cost**: ~$0.10/month (essentially free)
-**Benefit**: Response time drops from 9.5s to 0.22s (44x faster!)
-
-Without scheduler:
+**Cold Start Performance:**
 - First request after inactivity: ~9.5 seconds
 - Subsequent requests (while warm): ~0.22 seconds
 
-With scheduler:
-- All requests: ~0.22 seconds (service stays warm)
+**Recommended Approach:** Add a background task in your main app to ping this service every 4-5 minutes while your main app is running. This ensures both services scale together automatically.
+
+**Example (FastAPI):**
+```python
+from fastapi import FastAPI
+from contextlib import asynccontextmanager
+import httpx
+import asyncio
+
+ML_SERVICE_URL = "https://payroll-invoice-classifier-324047048236.us-central1.run.app"
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Start background task to keep ML service warm
+    task = asyncio.create_task(keep_ml_service_warm())
+    yield
+    # Stop pinging on shutdown
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+async def keep_ml_service_warm():
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        while True:
+            await asyncio.sleep(240)  # 4 minutes
+            try:
+                await client.get(f"{ML_SERVICE_URL}/health")
+            except Exception:
+                pass  # Silent failures
+
+app = FastAPI(lifespan=lifespan)
+```
+
+**Benefits:**
+- ✅ $0.00/month (no Cloud Scheduler needed)
+- ✅ Automatic scaling synchronization
+- ✅ ML service only warm when main app is running
+- ✅ Clean, maintainable code
 
 ## API Endpoints
 
@@ -383,8 +411,8 @@ make test
 - **Model size**: 12.14 MB
 
 **Performance Impact:**
-- Without scheduler: ~9.5s cold start every 15+ minutes of inactivity
-- With Cloud Scheduler: ~0.2s for all requests (~$0.10/month cost)
+- Without keep-alive: ~9.5s cold start every 15+ minutes of inactivity
+- With keep-alive from main app: ~0.2s for all requests (free, automatic scaling)
 
 ## Cost Estimation
 
@@ -395,10 +423,6 @@ make test
 
 **Result**: $0.00/month for your traffic volume
 
-### Optional Cloud Scheduler
-- **Cost**: ~$0.10/month
-- **Benefit**: Keeps service warm for faster responses
-
 ## Troubleshooting
 
 ### Model not found error
@@ -408,10 +432,7 @@ make train
 ```
 
 ### Cold starts too slow
-```bash
-# Set up keep-warm scheduler
-make setup-scheduler
-```
+Implement keep-alive pings from your main application. See the "Integrate with Your Main Application" section in the deployment guide for code examples.
 
 ### Out of memory
 ```bash

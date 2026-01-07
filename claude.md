@@ -248,7 +248,7 @@ async def health():
 
 **Uses**:
 - Cloud Run health monitoring
-- Keep-alive pings from Cloud Scheduler
+- Keep-alive pings from main application
 - Debugging deployment issues
 
 ## Deployment Strategy
@@ -266,20 +266,33 @@ Timeout: 60s           # Enough for cold start
 
 ### 2. Keep-Warm Strategy
 
-**Problem**: 20-50 requests/day means frequent cold starts
+**Problem**: 20-50 requests/day means frequent cold starts (9.5s)
 
-**Solution**: Cloud Scheduler pinging every 5 minutes
+**Solution**: Background task in main application
 
-```bash
-gcloud scheduler jobs create http keep-warm \
-  --schedule="*/5 * * * *" \
-  --uri="https://service.run.app/health"
+```python
+# In main application (FastAPI example)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    task = asyncio.create_task(keep_ml_service_warm())
+    yield
+    task.cancel()
+
+async def keep_ml_service_warm():
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        while True:
+            await asyncio.sleep(240)  # 4 minutes
+            try:
+                await client.get(f"{ML_SERVICE_URL}/health")
+            except Exception:
+                pass
 ```
 
-**Math**:
+**Benefits**:
 - Container stays warm for ~15 minutes after last request
-- Ping every 5 minutes = always warm
-- Cost: ~$0.10/month (8,640 pings × $0.00001)
+- Ping every 4 minutes = always warm when main app is running
+- Cost: $0.00/month (no Cloud Scheduler needed)
+- Automatic scaling synchronization (both services scale together)
 
 **Alternative**: Min instances = 1 costs ~$8-12/month
 
@@ -444,14 +457,15 @@ MODEL_VERSION = "1.0.0"  # In config.py
 
 **Total cost**: $0.00/month
 
-### With Keep-Warm
+### With Keep-Warm (Main App Integration)
 
 | Resource | Cost |
 |----------|------|
-| Cloud Scheduler | $0.10/month |
-| Cloud Run (pings) | $0.00 (within free tier) |
+| Keep-alive from main app | $0.00 (free) |
+| Cloud Run (this service) | $0.00 (within free tier) |
+| Cloud Run (main app pings) | $0.00 (within free tier) |
 
-**Total cost**: ~$0.10/month
+**Total cost**: $0.00/month
 
 ### Scaling Considerations
 
