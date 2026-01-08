@@ -38,6 +38,12 @@ class Settings(BaseSettings):
     port: int = 8080
     log_level: str = "info"
 
+    # Logging configuration
+    log_requests: bool = True  # Log request inputs
+    log_responses: bool = True  # Log response outputs
+    log_performance: bool = True  # Log request latency
+    log_format: str = "text"  # "text" or "json"
+
     # Optional: Database credentials (if needed for training data)
     database_url: str | None = None
     db_host: str | None = None
@@ -76,3 +82,7 @@ MODEL_VERSION = settings.model_version
 API_HOST = settings.api_host
 API_PORT = settings.port
 LOG_LEVEL = settings.log_level
+LOG_REQUESTS = settings.log_requests
+LOG_RESPONSES = settings.log_responses
+LOG_PERFORMANCE = settings.log_performance
+LOG_FORMAT = settings.log_format

@@ -1,6 +1,6 @@
 """FastAPI application for invoice classification."""
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
 from typing import Dict, Optional
 from datetime import datetime
@@ -13,13 +13,20 @@ from src.predict import (
     load_category_model,
     load_tag_model
 )
-from src.config import MODEL_VERSION, API_HOST, API_PORT, LOG_LEVEL
-
-# Configure logging
-logging.basicConfig(
-    level=LOG_LEVEL.upper(),
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+from src.config import (
+    MODEL_VERSION, API_HOST, API_PORT, LOG_LEVEL,
+    LOG_REQUESTS, LOG_RESPONSES, LOG_PERFORMANCE, LOG_FORMAT
 )
+from src.logging_utils import (
+    setup_logging,
+    RequestIDMiddleware,
+    TimingMiddleware,
+    log_request_details,
+    log_response_details
+)
+
+# Configure logging with request ID support
+setup_logging(LOG_LEVEL, LOG_FORMAT)
 logger = logging.getLogger(__name__)
 
 # Create FastAPI app
@@ -28,6 +35,11 @@ app = FastAPI(
     description="ML-based invoice expense category and tag prediction",
     version=MODEL_VERSION,
 )
+
+# Add middleware (order matters - last added is executed first)
+# So we add Timing first, then RequestID
+app.add_middleware(TimingMiddleware)
+app.add_middleware(RequestIDMiddleware)
 
 
 # Request/Response models
@@ -213,11 +225,12 @@ async def health():
 
 
 @app.post("/predict/category", response_model=PredictionResponse)
-async def predict_category(invoice: InvoiceRequest):
+async def predict_category(invoice: InvoiceRequest, request: Request):
     """Predict expense category for an invoice.
 
     Args:
         invoice: Invoice data
+        request: FastAPI request object (for request_id)
 
     Returns:
         Prediction with category probabilities
@@ -225,8 +238,18 @@ async def predict_category(invoice: InvoiceRequest):
     Raises:
         HTTPException: If prediction fails
     """
+    request_id = getattr(request.state, "request_id", "unknown")
+
     try:
         logger.info(f"Predicting category for invoice: {invoice.invoice_title[:50]}...")
+
+        # Log full request details if enabled
+        if LOG_REQUESTS:
+            log_request_details(
+                logger,
+                invoice.model_dump(),
+                request_id
+            )
 
         # Get predictions
         probabilities = predict_expense_category(
@@ -246,30 +269,42 @@ async def predict_category(invoice: InvoiceRequest):
 
         logger.info(f"Category prediction: {top_category} ({top_probability:.2%})")
 
-        return PredictionResponse(
+        # Build response
+        response_data = PredictionResponse(
             probabilities=probabilities,
             top_category=top_category,
             top_probability=top_probability,
             model_version=MODEL_VERSION,
         )
 
+        # Log full response details if enabled
+        if LOG_RESPONSES:
+            log_response_details(
+                logger,
+                response_data.model_dump(),
+                request_id
+            )
+
+        return response_data
+
     except ValueError as e:
-        logger.error(f"Validation error: {e}")
+        logger.error(f"Validation error: {e}", extra={"request_id": request_id})
         raise HTTPException(status_code=400, detail=str(e))
     except FileNotFoundError as e:
-        logger.error(f"Category model not found: {e}")
+        logger.error(f"Category model not found: {e}", extra={"request_id": request_id})
         raise HTTPException(status_code=503, detail="Category model not available")
     except Exception as e:
-        logger.error(f"Category prediction error: {e}")
+        logger.error(f"Category prediction error: {e}", exc_info=True, extra={"request_id": request_id})
         raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
 
 
 @app.post("/predict/tag", response_model=PredictionResponse)
-async def predict_tag(invoice: InvoiceRequest):
+async def predict_tag(invoice: InvoiceRequest, request: Request):
     """Predict expense tag for an invoice.
 
     Args:
         invoice: Invoice data
+        request: FastAPI request object (for request_id)
 
     Returns:
         Prediction with tag probabilities
@@ -277,8 +312,18 @@ async def predict_tag(invoice: InvoiceRequest):
     Raises:
         HTTPException: If prediction fails
     """
+    request_id = getattr(request.state, "request_id", "unknown")
+
     try:
         logger.info(f"Predicting tag for invoice: {invoice.invoice_title[:50]}...")
+
+        # Log full request details if enabled
+        if LOG_REQUESTS:
+            log_request_details(
+                logger,
+                invoice.model_dump(),
+                request_id
+            )
 
         # Get predictions
         probabilities = predict_expense_tag(
@@ -298,21 +343,32 @@ async def predict_tag(invoice: InvoiceRequest):
 
         logger.info(f"Tag prediction: {top_tag} ({top_probability:.2%})")
 
-        return PredictionResponse(
+        # Build response
+        response_data = PredictionResponse(
             probabilities=probabilities,
             top_category=top_tag,  # Reusing field name for consistency
             top_probability=top_probability,
             model_version=MODEL_VERSION,
         )
 
+        # Log full response details if enabled
+        if LOG_RESPONSES:
+            log_response_details(
+                logger,
+                response_data.model_dump(),
+                request_id
+            )
+
+        return response_data
+
     except ValueError as e:
-        logger.error(f"Validation error: {e}")
+        logger.error(f"Validation error: {e}", extra={"request_id": request_id})
         raise HTTPException(status_code=400, detail=str(e))
     except FileNotFoundError as e:
-        logger.error(f"Tag model not found: {e}")
+        logger.error(f"Tag model not found: {e}", extra={"request_id": request_id})
         raise HTTPException(status_code=503, detail="Tag model not available")
     except Exception as e:
-        logger.error(f"Tag prediction error: {e}")
+        logger.error(f"Tag prediction error: {e}", exc_info=True, extra={"request_id": request_id})
         raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
 
 
