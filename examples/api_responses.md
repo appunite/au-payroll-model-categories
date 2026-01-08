@@ -1,5 +1,34 @@
 # API Response Examples
 
+## Request Validation Rules
+
+All requests must comply with the following validation rules:
+
+**Required Fields:**
+- `entity_id` (string): Company/entity unique identifier
+- `owner_id` (string): Invoice owner unique identifier
+- `net_price` (float): Must be > 0
+- `gross_price` (float): Must be > 0
+- `currency` (string): Must be a valid ISO 4217 currency code (3 letters)
+- `invoice_title` (string): Must not be empty
+- `issue_date` (string): Must be in YYYY-MM-DD format
+
+**Optional Fields:**
+- `tin` (string or null): Tax identification number
+
+**Currency Validation:**
+- Must be exactly 3 characters
+- Must be a valid ISO 4217 code (case-insensitive, will be normalized to uppercase)
+- Supported currencies: PLN, USD, EUR, GBP, CHF, CZK, DKK, SEK, NOK, CAD, AUD, JPY, CNY, INR, BRL, MXN, ZAR, SGD, HKD, NZD, KRW, TRY, RUB, AED, SAR, THB, MYR, IDR, PHP, VND, ILS, RON, HUF, BGN, HRK, ISK
+
+**Date Validation:**
+- Format: YYYY-MM-DD (e.g., "2024-08-29")
+- Must be a valid calendar date
+- Must be after 2000-01-01
+- Must not be in the future
+
+---
+
 ## Category Prediction Response
 
 **Endpoint**: `POST /predict/category`
@@ -238,6 +267,7 @@
 
 ### 400 Bad Request (Validation Error)
 
+**Invalid price (negative or zero):**
 ```json
 {
   "detail": [
@@ -245,6 +275,58 @@
       "loc": ["body", "net_price"],
       "msg": "ensure this value is greater than 0",
       "type": "value_error.number.not_gt"
+    }
+  ]
+}
+```
+
+**Invalid currency code:**
+```json
+{
+  "detail": [
+    {
+      "loc": ["body", "currency"],
+      "msg": "Value error, Invalid currency code 'XXX'. Must be a valid ISO 4217 code (e.g., PLN, USD, EUR, GBP)",
+      "type": "value_error"
+    }
+  ]
+}
+```
+
+**Invalid date format:**
+```json
+{
+  "detail": [
+    {
+      "loc": ["body", "issue_date"],
+      "msg": "Value error, Invalid date format '2024/08/29'. Must be YYYY-MM-DD (e.g., 2024-08-29)",
+      "type": "value_error"
+    }
+  ]
+}
+```
+
+**Future date:**
+```json
+{
+  "detail": [
+    {
+      "loc": ["body", "issue_date"],
+      "msg": "Value error, Date '2030-01-01' is in the future. Must not be later than today",
+      "type": "value_error"
+    }
+  ]
+}
+```
+
+**Date too old:**
+```json
+{
+  "detail": [
+    {
+      "loc": ["body", "issue_date"],
+      "msg": "Value error, Date '1999-12-31' is too old. Must be after 2000-01-01",
+      "type": "value_error"
     }
   ]
 }
