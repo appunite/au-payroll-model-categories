@@ -1,12 +1,25 @@
-# API Testing Examples
+# API Examples & Integration Guide
 
-This directory contains example invoice data and testing utilities.
+This directory contains example invoice data, API response examples, and client implementations.
 
-## Example Files
+## Files
 
-- `invoice_office_rent.json` - Office rent expense
-- `invoice_utilities.json` - Utility bill (electricity)
-- `invoice_software.json` - Software subscription
+### JSON Examples
+
+- `request.json` - Example invoice request payload
+- `category_response.json` - Example category prediction response (36 categories)
+- `tag_response.json` - Example tag prediction response (17 tags)
+- `invoice_office_rent.json` - Office rent expense example
+- `invoice_utilities.json` - Utility bill example
+- `invoice_software.json` - Software subscription example
+
+### Documentation
+
+- `api_responses.md` - Complete API documentation with TypeScript, Python, and cURL examples
+
+### Testing Scripts
+
+- `test_api.sh` - Bash script for testing API endpoints
 
 ## Quick Test
 
@@ -60,14 +73,14 @@ Create a new JSON file with the invoice structure:
 
 ```json
 {
-  "entityId": "uuid",
-  "ownerId": "uuid",
-  "netPrice": 100.0,
-  "grossPrice": 123.0,
+  "entity_id": "uuid",
+  "owner_id": "uuid",
+  "net_price": 100.0,
+  "gross_price": 123.0,
   "currency": "PLN",
-  "title_normalized": "description",
+  "invoice_title": "description",
   "tin": "tax_id",
-  "issueDate": "YYYY-MM-DD"
+  "issue_date": "YYYY-MM-DD"
 }
 ```
 

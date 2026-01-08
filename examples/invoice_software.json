@@ -1,10 +1,10 @@
 {
-  "entityId": "c2b6df6b-35e9-4120-9e7c-d20be39d7146",
-  "ownerId": "e148cdec-d66d-11e9-8a40-47a686a82f23",
-  "netPrice": 99.0,
-  "grossPrice": 99.0,
+  "entity_id": "c2b6df6b-35e9-4120-9e7c-d20be39d7146",
+  "owner_id": "e148cdec-d66d-11e9-8a40-47a686a82f23",
+  "net_price": 99.0,
+  "gross_price": 99.0,
   "currency": "USD",
   "invoice_title": "GitHub Inc - Team Subscription",
   "tin": null,
-  "issueDate": "2024-11-15"
+  "issue_date": "2024-11-15"
 }

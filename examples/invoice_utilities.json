@@ -1,10 +1,10 @@
 {
-  "entityId": "c2b6df6b-35e9-4120-9e7c-d20be39d7146",
-  "ownerId": "e148cdec-d66d-11e9-8a40-47a686a82f23",
-  "netPrice": 450.0,
-  "grossPrice": 553.5,
+  "entity_id": "c2b6df6b-35e9-4120-9e7c-d20be39d7146",
+  "owner_id": "e148cdec-d66d-11e9-8a40-47a686a82f23",
+  "net_price": 450.0,
+  "gross_price": 553.5,
   "currency": "PLN",
   "invoice_title": "PGE Polska Grupa Energetyczna - Electricity December",
   "tin": "9876543210",
-  "issueDate": "2024-12-05"
+  "issue_date": "2024-12-05"
 }
