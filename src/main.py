@@ -1,10 +1,11 @@
 """FastAPI application for invoice classification."""
 
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Dict, Optional
 from datetime import datetime
 import logging
+import re
 
 from src.predict import (
     predict_expense_category,
@@ -40,6 +41,60 @@ class InvoiceRequest(BaseModel):
     invoice_title: str = Field(..., min_length=1, description="Full invoice title/description")
     tin: Optional[str] = Field(None, description="Tax identification number (optional)")
     issue_date: str = Field(..., description="Invoice issue date (YYYY-MM-DD)")
+
+    @field_validator('currency')
+    @classmethod
+    def validate_currency(cls, v: str) -> str:
+        """Validate currency code against common ISO 4217 codes."""
+        # Common currency codes used in the system
+        VALID_CURRENCIES = {
+            'PLN', 'USD', 'EUR', 'GBP', 'CHF', 'CZK', 'DKK', 'SEK', 'NOK',
+            'CAD', 'AUD', 'JPY', 'CNY', 'INR', 'BRL', 'MXN', 'ZAR', 'SGD',
+            'HKD', 'NZD', 'KRW', 'TRY', 'RUB', 'AED', 'SAR', 'THB', 'MYR',
+            'IDR', 'PHP', 'VND', 'ILS', 'RON', 'HUF', 'BGN', 'HRK', 'ISK'
+        }
+
+        v_upper = v.upper()
+        if v_upper not in VALID_CURRENCIES:
+            raise ValueError(
+                f"Invalid currency code '{v}'. Must be a valid ISO 4217 code "
+                f"(e.g., PLN, USD, EUR, GBP)"
+            )
+        return v_upper
+
+    @field_validator('issue_date')
+    @classmethod
+    def validate_issue_date(cls, v: str) -> str:
+        """Validate issue_date format and reasonable range."""
+        # Check format (YYYY-MM-DD)
+        if not re.match(r'^\d{4}-\d{2}-\d{2}$', v):
+            raise ValueError(
+                f"Invalid date format '{v}'. Must be YYYY-MM-DD (e.g., 2024-08-29)"
+            )
+
+        # Try to parse the date
+        try:
+            date_obj = datetime.strptime(v, '%Y-%m-%d')
+        except ValueError as e:
+            raise ValueError(
+                f"Invalid date '{v}'. {str(e)}"
+            )
+
+        # Check reasonable range (2000 to present, not future)
+        min_date = datetime(2000, 1, 1)
+        max_date = datetime.now()
+
+        if date_obj < min_date:
+            raise ValueError(
+                f"Date '{v}' is too old. Must be after 2000-01-01"
+            )
+
+        if date_obj > max_date:
+            raise ValueError(
+                f"Date '{v}' is in the future. Must not be later than today"
+            )
+
+        return v
 
     class Config:
         json_schema_extra = {
