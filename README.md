@@ -9,6 +9,7 @@ Fast ML-based invoice expense category prediction API, optimized for deployment 
 - **LightGBM Model**: Faster and lighter than traditional gradient boosting
 - **TF-IDF Text Processing**: Extracts semantic meaning from full invoice titles
 - **REST API**: Simple JSON in/out interface via FastAPI
+- **Comprehensive Logging**: Request tracking, performance metrics, structured logging (text/JSON)
 - **Comprehensive Metrics**: Detailed model evaluation and monitoring
 - **Free Tier Friendly**: Designed to run within Google Cloud Run free tier (20-50 requests/day)
 - **Environment Variables**: Support for both .env files and cloud environment variables
@@ -310,6 +311,98 @@ Predict expense category for an invoice.
 
 ### `GET /docs`
 Interactive API documentation (Swagger UI).
+
+## Logging and Monitoring
+
+The API includes comprehensive logging to help track service health and debug issues.
+
+### Logging Features
+
+1. **Request ID Tracking**: Every request gets a unique ID for correlation across logs
+   - Request IDs are included in all log messages
+   - Returned in `X-Request-ID` response header
+   - Can be provided by client via `X-Request-ID` request header
+
+2. **Performance Metrics**: Request latency tracking
+   - Processing time logged for each request
+   - Returned in `X-Process-Time` response header
+   - Format: `X-Process-Time: 245.32ms`
+
+3. **Request/Response Logging**: Optional detailed input/output logging
+   - Configurable via environment variables
+   - Helps debug prediction issues
+   - Track what data is being sent to the model
+
+4. **Structured Logging**: Support for both text and JSON formats
+   - Text format: Human-readable for development
+   - JSON format: Machine-parseable for production (e.g., Cloud Logging)
+
+### Configuration
+
+Configure logging via environment variables in `.env`:
+
+```bash
+# Logging level (debug, info, warning, error)
+LOG_LEVEL=info
+
+# Enable/disable detailed logging
+LOG_REQUESTS=true       # Log full request input data
+LOG_RESPONSES=true      # Log full response output data
+LOG_PERFORMANCE=true    # Log request latency
+
+# Logging format (text or json)
+LOG_FORMAT=text         # Use "json" for production/cloud environments
+```
+
+### Example Log Output
+
+**Text Format (Development):**
+```
+2026-01-08 10:15:23 - main - INFO - [abc-123-def] - Predicting category for invoice: Adobe Systems Software Ireland Ltd...
+2026-01-08 10:15:23 - main - INFO - [abc-123-def] - Request input: {
+  "entity_id": "c2b6df6b-35e9-4120-9e7c-d20be39d7146",
+  "net_price": 2500.0,
+  ...
+}
+2026-01-08 10:15:23 - main - INFO - [abc-123-def] - Category prediction: marketing:advertising (78.45%)
+2026-01-08 10:15:23 - timing - INFO - [abc-123-def] - request_id=abc-123-def method=POST path=/predict/category status=200 duration=245.32ms
+```
+
+**JSON Format (Production):**
+```json
+{
+  "timestamp": "2026-01-08 10:15:23",
+  "level": "INFO",
+  "logger": "main",
+  "message": "Category prediction: marketing:advertising (78.45%)",
+  "request_id": "abc-123-def",
+  "duration_ms": 245.32,
+  "status_code": 200
+}
+```
+
+### Monitoring in Google Cloud
+
+When deployed to Cloud Run, all logs are automatically sent to Cloud Logging where you can:
+- Filter by request ID to see all logs for a specific request
+- Set up alerts for error rates or latency thresholds
+- Create dashboards to visualize request volume and performance
+- Export logs to BigQuery for analysis
+
+**Useful Cloud Logging Filters:**
+```
+# View all errors
+severity >= ERROR
+
+# View slow requests (>1 second)
+jsonPayload.duration_ms > 1000
+
+# Track a specific request
+jsonPayload.request_id = "abc-123-def"
+
+# View prediction results only
+jsonPayload.message =~ "prediction:"
+```
 
 ## Model Performance
 
