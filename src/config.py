@@ -14,7 +14,8 @@ MODEL_DIR.mkdir(exist_ok=True)
 DATA_DIR.mkdir(exist_ok=True)
 
 # Model configuration
-MODEL_PATH = MODEL_DIR / "invoice_classifier.joblib"
+MODEL_PATH = MODEL_DIR / "invoice_classifier.joblib"  # Category model
+TAG_MODEL_PATH = MODEL_DIR / "invoice_tag_classifier.joblib"  # Tag model
 
 
 class Settings(BaseSettings):
@@ -49,12 +50,8 @@ class Settings(BaseSettings):
 # Create global settings instance
 settings = Settings()
 
-# Feature configuration
-# Note: invoice_title is processed separately with TF-IDF vectorization
-NUMERICAL_FEATURES = ['netPrice', 'VAT_Amount', 'VAT_Rate']
-CATEGORICAL_FEATURES = ['entityId', 'ownerId', 'currency', 'tin']
-DATETIME_FEATURES = ['issueYear', 'issueMonth', 'issueDay']
-TEXT_FEATURE = 'invoice_title'  # Full invoice title for TF-IDF
+# Feature configuration (now in src.preprocessing for reusability)
+# Import with: from src.preprocessing import NUMERICAL_FEATURES, etc.
 
 # Training configuration
 RANDOM_STATE = 42

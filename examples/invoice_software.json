@@ -1,10 +1,10 @@
 {
-  "entityId": "00000000-0000-0000-0000-000000000001",
-  "ownerId": "00000000-0000-0000-0000-000000000002",
-  "netPrice": 99.0,
-  "grossPrice": 99.0,
+  "entity_id": "00000000-0000-0000-0000-000000000001",
+  "owner_id": "00000000-0000-0000-0000-000000000002",
+  "net_price": 99.0,
+  "gross_price": 99.0,
   "currency": "USD",
   "invoice_title": "GitHub Inc - Team Subscription",
   "tin": null,
-  "issueDate": "2024-11-15"
+  "issue_date": "2024-11-15"
 }

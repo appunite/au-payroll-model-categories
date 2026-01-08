@@ -1,0 +1,24 @@
+{
+  "probabilities": {
+    "legal-advice": 0.45657710684807895,
+    "benefit-training": 0.3922044384455597,
+    "esop": 0.027944264711362753,
+    "dashbit-jose-valim": 0.018777091912633007,
+    "referral-fee": 0.018777091912633007,
+    "benefit-outing": 0.007466479835417441,
+    "benefit-psychologist": 0.0071404727621614695,
+    "benefit-medical-care": 0.007128616812919834,
+    "benefit-english": 0.007128542206759688,
+    "benefit-multisport": 0.0071249544787428355,
+    "accounting": 0.0071216214807763144,
+    "benefit-books-formula": 0.007121277432091303,
+    "benefit-insurance": 0.007119689431371918,
+    "visual-panda": 0.00711867285359645,
+    "benefit-computer-formula": 0.007099851355083948,
+    "BHP": 0.00709888011327466,
+    "benefit-apartments": 0.00705094740753674
+  },
+  "top_category": "legal-advice",
+  "top_probability": 0.45657710684807895,
+  "model_version": "1.0.0"
+}

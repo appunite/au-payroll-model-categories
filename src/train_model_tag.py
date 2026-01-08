@@ -1,7 +1,7 @@
-"""Train invoice classification model with comprehensive evaluation.
+"""Train invoice tag classification model with comprehensive evaluation.
 
-Uses TF-IDF vectorization of full invoice titles for rich text features,
-combined with numerical, categorical, and temporal features.
+This script trains a model to predict expense tags (e.g., 'benefit-training',
+'legal-advice', 'accounting', etc.) based on invoice data.
 """
 
 import pandas as pd
@@ -11,14 +11,8 @@ import warnings
 from datetime import datetime
 from pathlib import Path
 from sklearn.model_selection import train_test_split, cross_val_score, StratifiedKFold
-
-# Suppress benign sklearn warning about feature names in LightGBM pipeline
-warnings.filterwarnings('ignore', message='X does not have valid feature names')
 from sklearn.preprocessing import LabelEncoder
-from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
-from sklearn.impute import SimpleImputer
-from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics import (
     accuracy_score,
     precision_recall_fscore_support,
@@ -27,17 +21,30 @@ from sklearn.metrics import (
 import lightgbm as lgb
 
 from src.config import (
-    MODEL_PATH,
+    TAG_MODEL_PATH,
     DATA_DIR,
     RANDOM_STATE,
     TEST_SIZE,
     CV_FOLDS,
     LGBM_PARAMS,
 )
+from src.preprocessing import (
+    prepare_invoice_features,
+    create_preprocessing_pipeline,
+    NUMERICAL_FEATURES,
+    CATEGORICAL_FEATURES,
+    DATETIME_FEATURES,
+    TEXT_FEATURE,
+    ALL_FEATURES,
+)
+
+
+# Suppress benign sklearn warning about feature names in LightGBM pipeline
+warnings.filterwarnings('ignore', message='X does not have valid feature names')
 
 
 def load_and_prepare_data(csv_path: str) -> tuple:
-    """Load and prepare training data from CSV.
+    """Load and prepare tag training data from CSV.
 
     Args:
         csv_path: Path to CSV file exported from database
@@ -45,92 +52,28 @@ def load_and_prepare_data(csv_path: str) -> tuple:
     Returns:
         Tuple of (X, y) features and target
     """
-    print(f"Loading data from {csv_path}...")
+    print(f"Loading tag training data from {csv_path}...")
     df = pd.read_csv(csv_path)
 
     print(f"Loaded {len(df)} records")
-    print(f"Classes distribution:\n{df['expenseCategory'].value_counts()}")
+    print(f"Tag distribution:\n{df['tag'].value_counts()}")
 
-    # Drop rows with missing invoice_title (critical feature)
-    df.dropna(subset=['invoice_title'], inplace=True)
-    print(f"After dropping missing titles: {len(df)} records")
+    # Prepare features (adds VAT and date features)
+    df = prepare_invoice_features(df)
+    print(f"After preprocessing: {len(df)} records")
 
-    # Process issueDate
-    df['issueDate'] = pd.to_datetime(df['issueDate'])
-    df['issueMonth'] = df['issueDate'].dt.month
-    df['issueYear'] = df['issueDate'].dt.year
-    df['issueDay'] = df['issueDate'].dt.day
+    # Extract features and target
+    X = df[ALL_FEATURES]
+    y = df['tag']
 
-    # Calculate VAT features
-    df['VAT_Amount'] = df['grossPrice'] - df['netPrice']
-    df['VAT_Rate'] = (df['grossPrice'] / df['netPrice']) - 1
-
-    # Handle infinite values
-    df.loc[df['VAT_Rate'].isin([float('inf'), float('-inf')]), 'VAT_Rate'] = 0
-
-    # Features for this model
-    numerical_features = ['netPrice', 'VAT_Amount', 'VAT_Rate']
-    categorical_features = ['entityId', 'ownerId', 'currency', 'tin']
-    datetime_features = ['issueYear', 'issueMonth', 'issueDay']
-    text_feature = 'invoice_title'
-
-    # Combine features
-    X = df[numerical_features + categorical_features + datetime_features + [text_feature]]
-    y = df['expenseCategory']
-
-    return X, y, df, numerical_features, categorical_features, datetime_features, text_feature
+    return X, y, df
 
 
-def create_preprocessing_pipeline(numerical_features, categorical_features, datetime_features, text_feature):
-    """Create sklearn preprocessing pipeline with TF-IDF for text.
-
-    Returns:
-        ColumnTransformer for preprocessing
-    """
-    # Numerical transformer
-    numerical_transformer = SimpleImputer(strategy='median')
-
-    # Categorical transformer (excluding title)
-    from sklearn.preprocessing import OneHotEncoder
-    categorical_transformer = Pipeline(steps=[
-        ('imputer', SimpleImputer(strategy='constant', fill_value='MISSING')),
-        ('onehot', OneHotEncoder(handle_unknown='ignore', sparse_output=False, max_categories=50))
-    ])
-
-    # Text transformer: TF-IDF on invoice titles
-    # Key parameters:
-    # - max_features: limit vocab size for faster inference
-    # - ngram_range: capture 1-2 word phrases (e.g., "software license")
-    # - min_df: ignore very rare terms (appear in <3 documents)
-    # - max_df: ignore very common terms (appear in >80% of documents)
-    text_transformer = TfidfVectorizer(
-        max_features=200,  # Keep model light for fast cold starts
-        ngram_range=(1, 2),  # Unigrams and bigrams
-        min_df=3,  # Must appear in at least 3 documents
-        max_df=0.8,  # Must not appear in >80% of documents
-        lowercase=True,
-        strip_accents='unicode',  # Handle Polish characters
-        token_pattern=r'\b[a-zA-Z]{2,}\b',  # Words with 2+ letters
-    )
-
-    # Combine transformers
-    preprocessor = ColumnTransformer(
-        transformers=[
-            ('num', numerical_transformer, numerical_features),
-            ('cat', categorical_transformer, categorical_features),
-            ('datetime', 'passthrough', datetime_features),
-            ('text', text_transformer, text_feature),
-        ]
-    )
-
-    return preprocessor
-
-
-def train_and_evaluate(X, y, numerical_features, categorical_features, datetime_features, text_feature):
-    """Train model with TF-IDF and comprehensive evaluation."""
+def train_and_evaluate(X, y):
+    """Train tag model with comprehensive evaluation."""
 
     print("\n" + "="*60)
-    print("TRAINING INVOICE CLASSIFIER")
+    print("TRAINING INVOICE TAG CLASSIFIER")
     print("="*60)
 
     # Encode labels
@@ -139,7 +82,11 @@ def train_and_evaluate(X, y, numerical_features, categorical_features, datetime_
 
     # Create preprocessing pipeline
     preprocessor = create_preprocessing_pipeline(
-        numerical_features, categorical_features, datetime_features, text_feature
+        numerical_features=NUMERICAL_FEATURES,
+        categorical_features=CATEGORICAL_FEATURES,
+        datetime_features=DATETIME_FEATURES,
+        text_feature=TEXT_FEATURE,
+        max_tfidf_features=200  # Keep model light
     )
 
     # Create model
@@ -208,6 +155,7 @@ def train_and_evaluate(X, y, numerical_features, categorical_features, datetime_
 
     # Metrics
     metrics = {
+        'model_type': 'tag',
         'training_date': datetime.now().isoformat(),
         'n_samples': len(X),
         'n_train': len(X_train),
@@ -237,49 +185,49 @@ def train_and_evaluate(X, y, numerical_features, categorical_features, datetime_
 
 
 def save_model_and_metrics(pipeline, metrics):
-    """Save trained model and metrics."""
+    """Save trained tag model and metrics."""
 
-    print(f"\nSaving model to {MODEL_PATH}...")
-    joblib.dump(pipeline, MODEL_PATH)
+    print(f"\nSaving model to {TAG_MODEL_PATH}...")
+    joblib.dump(pipeline, TAG_MODEL_PATH)
 
-    metrics_path = MODEL_PATH.parent / "model_metrics.json"
+    metrics_path = TAG_MODEL_PATH.parent / "tag_model_metrics.json"
     print(f"Saving metrics to {metrics_path}...")
     with open(metrics_path, 'w') as f:
         json.dump(metrics, f, indent=2)
 
     print("\n" + "="*60)
-    print("MODEL TRAINING COMPLETE")
+    print("TAG MODEL TRAINING COMPLETE")
     print("="*60)
-    print(f"Model saved: {MODEL_PATH}")
-    print(f"Model size: {MODEL_PATH.stat().st_size / 1024 / 1024:.2f} MB")
+    print(f"Model saved: {TAG_MODEL_PATH}")
+    print(f"Model size: {TAG_MODEL_PATH.stat().st_size / 1024 / 1024:.2f} MB")
     print(f"Metrics saved: {metrics_path}")
 
 
-def main(csv_file: str = "invoices_training_data.csv"):
-    """Main training pipeline."""
+def main(csv_file: str = "invoices_tag_training_data.csv"):
+    """Main training pipeline for tag model."""
     csv_path = DATA_DIR / csv_file
 
     if not csv_path.exists():
         raise FileNotFoundError(
             f"Training data not found at {csv_path}\n"
-            f"Please run: make fetch-data"
+            f"Please export tag training data using queries/fetch_tag_training_data.sql"
         )
 
     # Load data
-    X, y, df, numerical_features, categorical_features, datetime_features, text_feature = load_and_prepare_data(csv_path)
+    X, y, df = load_and_prepare_data(csv_path)
 
     # Train and evaluate
-    pipeline, metrics = train_and_evaluate(X, y, numerical_features, categorical_features, datetime_features, text_feature)
+    pipeline, metrics = train_and_evaluate(X, y)
 
     # Save
     save_model_and_metrics(pipeline, metrics)
 
-    print("\n✓ Training complete! You can now deploy the model.")
+    print(f"\n✓ Tag model training complete!")
     print(f"  Test accuracy: {metrics['test_accuracy']:.2%}")
     print(f"  CV accuracy: {metrics['cv_mean_accuracy']:.2%} ± {metrics['cv_std_accuracy']:.2%}")
 
 
 if __name__ == "__main__":
     import sys
-    csv_file = sys.argv[1] if len(sys.argv) > 1 else "invoices_training_data.csv"
+    csv_file = sys.argv[1] if len(sys.argv) > 1 else "invoices_tag_training_data.csv"
     main(csv_file)

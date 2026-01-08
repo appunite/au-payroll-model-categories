@@ -6,7 +6,12 @@ from typing import Dict, Optional
 from datetime import datetime
 import logging
 
-from src.predict import predict_expense_category, load_model
+from src.predict import (
+    predict_expense_category,
+    predict_expense_tag,
+    load_category_model,
+    load_tag_model
+)
 from src.config import MODEL_VERSION, API_HOST, API_PORT, LOG_LEVEL
 
 # Configure logging
@@ -19,7 +24,7 @@ logger = logging.getLogger(__name__)
 # Create FastAPI app
 app = FastAPI(
     title="Invoice Classifier API",
-    description="ML-based invoice expense category prediction",
+    description="ML-based invoice expense category and tag prediction",
     version=MODEL_VERSION,
 )
 
@@ -27,26 +32,26 @@ app = FastAPI(
 # Request/Response models
 class InvoiceRequest(BaseModel):
     """Invoice data for classification."""
-    entityId: str = Field(..., description="Company/entity unique identifier")
-    ownerId: str = Field(..., description="Invoice owner unique identifier")
-    netPrice: float = Field(..., gt=0, description="Net price (excluding VAT)")
-    grossPrice: float = Field(..., gt=0, description="Gross price (including VAT)")
+    entity_id: str = Field(..., description="Company/entity unique identifier")
+    owner_id: str = Field(..., description="Invoice owner unique identifier")
+    net_price: float = Field(..., gt=0, description="Net price (excluding VAT)")
+    gross_price: float = Field(..., gt=0, description="Gross price (including VAT)")
     currency: str = Field(..., min_length=3, max_length=3, description="Currency code (e.g., PLN, USD, EUR)")
     invoice_title: str = Field(..., min_length=1, description="Full invoice title/description")
     tin: Optional[str] = Field(None, description="Tax identification number (optional)")
-    issueDate: str = Field(..., description="Invoice issue date (YYYY-MM-DD)")
+    issue_date: str = Field(..., description="Invoice issue date (YYYY-MM-DD)")
 
     class Config:
         json_schema_extra = {
             "example": {
-                "entityId": "00000000-0000-0000-0000-000000000001",
-                "ownerId": "00000000-0000-0000-0000-000000000002",
-                "netPrice": 2500.0,
-                "grossPrice": 3075.0,
+                "entity_id": "00000000-0000-0000-0000-000000000001",
+                "owner_id": "00000000-0000-0000-0000-000000000002",
+                "net_price": 2500.0,
+                "gross_price": 3075.0,
                 "currency": "PLN",
                 "invoice_title": "Adobe Systems Software Ireland Ltd",
                 "tin": "1234567890",
-                "issueDate": "2024-08-29"
+                "issue_date": "2024-08-29"
             }
         }
 
@@ -81,18 +86,28 @@ class HealthResponse(BaseModel):
     timestamp: str
 
 
-# Load model on startup (important for cold start optimization!)
+# Load models on startup (important for cold start optimization!)
 @app.on_event("startup")
 async def startup_event():
-    """Load model into memory on startup."""
+    """Load models into memory on startup."""
     logger.info("Starting Invoice Classifier API...")
     logger.info(f"Model version: {MODEL_VERSION}")
 
+    # Load category model
     try:
-        load_model()
-        logger.info("Model loaded successfully!")
+        load_category_model()
+        logger.info("Category model loaded successfully!")
     except Exception as e:
-        logger.error(f"Failed to load model: {e}")
+        logger.error(f"Failed to load category model: {e}")
+        # Continue startup even if model fails - health check will reflect this
+        pass
+
+    # Load tag model
+    try:
+        load_tag_model()
+        logger.info("Tag model loaded successfully!")
+    except Exception as e:
+        logger.error(f"Failed to load tag model: {e}")
         # Continue startup even if model fails - health check will reflect this
         pass
 
@@ -105,7 +120,8 @@ async def root():
         "name": "Invoice Classifier API",
         "version": MODEL_VERSION,
         "endpoints": {
-            "predict": "/predict",
+            "predict_category": "/predict/category",
+            "predict_tag": "/predict/tag",
             "health": "/health",
             "docs": "/docs"
         }
@@ -115,22 +131,34 @@ async def root():
 @app.get("/health", response_model=HealthResponse)
 async def health():
     """Health check endpoint for monitoring and keep-alive."""
+    category_loaded = False
+    tag_loaded = False
+
     try:
-        model = load_model()
-        model_loaded = model is not None
+        model = load_category_model()
+        category_loaded = model is not None
     except Exception:
-        model_loaded = False
+        pass
+
+    try:
+        model = load_tag_model()
+        tag_loaded = model is not None
+    except Exception:
+        pass
+
+    # Both models must be loaded for healthy status
+    all_loaded = category_loaded and tag_loaded
 
     return HealthResponse(
-        status="healthy" if model_loaded else "unhealthy",
-        model_loaded=model_loaded,
+        status="healthy" if all_loaded else "unhealthy",
+        model_loaded=all_loaded,
         model_version=MODEL_VERSION,
         timestamp=datetime.now().isoformat()
     )
 
 
-@app.post("/predict", response_model=PredictionResponse)
-async def predict(invoice: InvoiceRequest):
+@app.post("/predict/category", response_model=PredictionResponse)
+async def predict_category(invoice: InvoiceRequest):
     """Predict expense category for an invoice.
 
     Args:
@@ -147,21 +175,21 @@ async def predict(invoice: InvoiceRequest):
 
         # Get predictions
         probabilities = predict_expense_category(
-            entityId=invoice.entityId,
-            ownerId=invoice.ownerId,
-            netPrice=invoice.netPrice,
-            grossPrice=invoice.grossPrice,
+            entityId=invoice.entity_id,
+            ownerId=invoice.owner_id,
+            netPrice=invoice.net_price,
+            grossPrice=invoice.gross_price,
             currency=invoice.currency,
             invoice_title=invoice.invoice_title,
             tin=invoice.tin,
-            issueDate=invoice.issueDate,
+            issueDate=invoice.issue_date,
         )
 
         # Extract top prediction
         top_category = list(probabilities.keys())[0]
         top_probability = list(probabilities.values())[0]
 
-        logger.info(f"Prediction: {top_category} ({top_probability:.2%})")
+        logger.info(f"Category prediction: {top_category} ({top_probability:.2%})")
 
         return PredictionResponse(
             probabilities=probabilities,
@@ -174,10 +202,62 @@ async def predict(invoice: InvoiceRequest):
         logger.error(f"Validation error: {e}")
         raise HTTPException(status_code=400, detail=str(e))
     except FileNotFoundError as e:
-        logger.error(f"Model not found: {e}")
-        raise HTTPException(status_code=503, detail="Model not available")
+        logger.error(f"Category model not found: {e}")
+        raise HTTPException(status_code=503, detail="Category model not available")
     except Exception as e:
-        logger.error(f"Prediction error: {e}")
+        logger.error(f"Category prediction error: {e}")
+        raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
+
+
+@app.post("/predict/tag", response_model=PredictionResponse)
+async def predict_tag(invoice: InvoiceRequest):
+    """Predict expense tag for an invoice.
+
+    Args:
+        invoice: Invoice data
+
+    Returns:
+        Prediction with tag probabilities
+
+    Raises:
+        HTTPException: If prediction fails
+    """
+    try:
+        logger.info(f"Predicting tag for invoice: {invoice.invoice_title[:50]}...")
+
+        # Get predictions
+        probabilities = predict_expense_tag(
+            entityId=invoice.entity_id,
+            ownerId=invoice.owner_id,
+            netPrice=invoice.net_price,
+            grossPrice=invoice.gross_price,
+            currency=invoice.currency,
+            invoice_title=invoice.invoice_title,
+            tin=invoice.tin,
+            issueDate=invoice.issue_date,
+        )
+
+        # Extract top prediction
+        top_tag = list(probabilities.keys())[0]
+        top_probability = list(probabilities.values())[0]
+
+        logger.info(f"Tag prediction: {top_tag} ({top_probability:.2%})")
+
+        return PredictionResponse(
+            probabilities=probabilities,
+            top_category=top_tag,  # Reusing field name for consistency
+            top_probability=top_probability,
+            model_version=MODEL_VERSION,
+        )
+
+    except ValueError as e:
+        logger.error(f"Validation error: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except FileNotFoundError as e:
+        logger.error(f"Tag model not found: {e}")
+        raise HTTPException(status_code=503, detail="Tag model not available")
+    except Exception as e:
+        logger.error(f"Tag prediction error: {e}")
         raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
 
 
