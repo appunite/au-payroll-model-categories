@@ -168,7 +168,7 @@ deploy:
 	@echo "✓ Deployment complete!"
 	@echo ""
 	@echo "NOTE: To avoid cold starts, implement keep-alive pings from your main application."
-	@echo "See IMPLEMENTATION_SUMMARY.md for implementation examples."
+	@echo "See README.md deployment section for implementation examples."
 
 # Clean generated files
 clean:

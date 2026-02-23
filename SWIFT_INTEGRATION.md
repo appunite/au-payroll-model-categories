@@ -1,51 +1,74 @@
-# Swift Integration Guide: Migrating from Modelbit to Cloud Run
+# Swift Integration Guide: Invoice Classifier on Cloud Run
 
-This guide helps you refactor your Swift application to use the payroll invoice classifier deployed on Google Cloud Run instead of Modelbit.
+This guide helps you integrate the payroll invoice classifier (category + tag prediction) into your Swift application.
 
 ## Overview
 
-**Old Service:** Modelbit (offline)
-**New Service:** Google Cloud Run
+**Service:** Google Cloud Run
 **Service URL:** `https://your-service.run.app`
-**Framework:** FastAPI (compatible with any HTTP client)
-**Response Format:** JSON
+**Framework:** FastAPI
+**Response Format:** JSON (snake_case field names)
+**Models:** Category (36 classes) + Tag (17 classes)
 
-## API Endpoint
+## API Endpoints
 
 ### Predict Invoice Category
 
-**Endpoint:** `POST /predict`
-**URL:** `https://your-service.run.app/predict`
+**Endpoint:** `POST /predict/category`
+**URL:** `https://your-service.run.app/predict/category`
 **Content-Type:** `application/json`
 **Authentication:** None (public endpoint)
 
-### Request Payload
+### Predict Invoice Tag
+
+**Endpoint:** `POST /predict/tag`
+**URL:** `https://your-service.run.app/predict/tag`
+**Content-Type:** `application/json`
+**Authentication:** None (public endpoint)
+
+### Request Payload (same for both endpoints)
 
 ```json
 {
-  "entityId": "00000000-0000-0000-0000-000000000001",
-  "ownerId": "00000000-0000-0000-0000-000000000002",
-  "netPrice": 2500.0,
-  "grossPrice": 3075.0,
+  "entity_id": "00000000-0000-0000-0000-000000000001",
+  "owner_id": "00000000-0000-0000-0000-000000000002",
+  "net_price": 2500.0,
+  "gross_price": 3075.0,
   "currency": "PLN",
   "invoice_title": "Adobe Systems Software Ireland Ltd",
   "tin": "1234567890",
-  "issueDate": "2024-08-29"
+  "issue_date": "2024-08-29"
 }
 ```
 
-### Response Format
+### Category Response Format
 
 ```json
 {
   "probabilities": {
-    "marketing:ads": 0.9998,
-    "marketing:services": 0.0001,
-    "operations:essential": 0.0001,
+    "operations:design": 0.37,
+    "people:training": 0.11,
+    "marketing:services": 0.10,
     "...": "..."
   },
-  "top_category": "marketing:ads",
-  "top_probability": 0.9998,
+  "top_category": "operations:design",
+  "top_probability": 0.37,
+  "model_version": "1.0.0"
+}
+```
+
+### Tag Response Format
+
+```json
+{
+  "probabilities": {
+    "legal-advice": 0.46,
+    "benefit-training": 0.39,
+    "esop": 0.03,
+    "...": "..."
+  },
+  "top_tag": "legal-advice",
+  "top_probability": 0.46,
   "model_version": "1.0.0"
 }
 ```
@@ -54,19 +77,25 @@ This guide helps you refactor your Swift application to use the payroll invoice 
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `entityId` | String | Yes | Unique identifier for the company/entity |
-| `ownerId` | String | Yes | Unique identifier for the invoice owner |
-| `netPrice` | Double | Yes | Net price excluding VAT (must be > 0) |
-| `grossPrice` | Double | Yes | Gross price including VAT (must be > 0) |
+| `entity_id` | String | Yes | Unique identifier for the company/entity |
+| `owner_id` | String | Yes | Unique identifier for the invoice owner |
+| `net_price` | Double | Yes | Net price excluding VAT (must be > 0) |
+| `gross_price` | Double | Yes | Gross price including VAT (must be > 0) |
 | `currency` | String | Yes | 3-letter currency code (PLN, USD, EUR, GBP) |
 | `invoice_title` | String | Yes | Full invoice title/description (not just first word) |
 | `tin` | String? | No | Tax identification number (can be null or empty string) |
-| `issueDate` | String | Yes | Invoice issue date in YYYY-MM-DD format |
+| `issue_date` | String | Yes | Invoice issue date in YYYY-MM-DD format |
 
-**Response Fields:**
+**Category Response Fields:**
 - `probabilities`: Dictionary of all category names with their probability scores (0.0 to 1.0)
 - `top_category`: The category with the highest probability
-- `top_probability`: The probability score of the top category
+- `top_probability`: The probability score of the top prediction
+- `model_version`: Model version used for prediction
+
+**Tag Response Fields:**
+- `probabilities`: Dictionary of all tag names with their probability scores (0.0 to 1.0)
+- `top_tag`: The tag with the highest probability
+- `top_probability`: The probability score of the top prediction
 - `model_version`: Model version used for prediction
 
 ## Swift Implementation
@@ -88,19 +117,19 @@ struct InvoiceClassificationRequest: Codable {
     let issueDate: String
 
     enum CodingKeys: String, CodingKey {
-        case entityId
-        case ownerId
-        case netPrice
-        case grossPrice
+        case entityId = "entity_id"
+        case ownerId = "owner_id"
+        case netPrice = "net_price"
+        case grossPrice = "gross_price"
         case currency
         case invoiceTitle = "invoice_title"
         case tin
-        case issueDate
+        case issueDate = "issue_date"
     }
 }
 
-// MARK: - Response Model
-struct InvoiceClassificationResponse: Codable {
+// MARK: - Category Response Model
+struct CategoryPredictionResponse: Codable {
     let probabilities: [String: Double]
     let topCategory: String
     let topProbability: Double
@@ -109,6 +138,21 @@ struct InvoiceClassificationResponse: Codable {
     enum CodingKeys: String, CodingKey {
         case probabilities
         case topCategory = "top_category"
+        case topProbability = "top_probability"
+        case modelVersion = "model_version"
+    }
+}
+
+// MARK: - Tag Response Model
+struct TagPredictionResponse: Codable {
+    let probabilities: [String: Double]
+    let topTag: String
+    let topProbability: Double
+    let modelVersion: String
+
+    enum CodingKeys: String, CodingKey {
+        case probabilities
+        case topTag = "top_tag"
         case topProbability = "top_probability"
         case modelVersion = "model_version"
     }
@@ -138,15 +182,21 @@ import ComposableArchitecture
 
 // MARK: - API Client Interface
 struct InvoiceClassifierClient {
-    var predict: (InvoiceClassificationRequest) async throws -> InvoiceClassificationResponse
+    var predictCategory: (InvoiceClassificationRequest) async throws -> CategoryPredictionResponse
+    var predictTag: (InvoiceClassificationRequest) async throws -> TagPredictionResponse
     var health: () async throws -> HealthResponse
 }
 
 // MARK: - Live Implementation
 extension InvoiceClassifierClient {
+    private static let baseURL = "https://your-service.run.app"
+
     static let live = Self(
-        predict: { request in
-            try await classifyInvoice(request)
+        predictCategory: { request in
+            try await postRequest(request, endpoint: "/predict/category", responseType: CategoryPredictionResponse.self)
+        },
+        predictTag: { request in
+            try await postRequest(request, endpoint: "/predict/tag", responseType: TagPredictionResponse.self)
         },
         health: {
             try await checkHealth()
@@ -154,8 +204,12 @@ extension InvoiceClassifierClient {
     )
 
     // MARK: - Network Implementation
-    private static func classifyInvoice(_ request: InvoiceClassificationRequest) async throws -> InvoiceClassificationResponse {
-        let url = URL(string: "https://your-service.run.app/predict")!
+    private static func postRequest<T: Decodable>(
+        _ request: InvoiceClassificationRequest,
+        endpoint: String,
+        responseType: T.Type
+    ) async throws -> T {
+        let url = URL(string: "\(baseURL)\(endpoint)")!
 
         var urlRequest = URLRequest(url: url)
         urlRequest.httpMethod = "POST"
@@ -173,11 +227,11 @@ extension InvoiceClassifierClient {
             throw URLError(.init(rawValue: httpResponse.statusCode))
         }
 
-        return try JSONDecoder().decode(InvoiceClassificationResponse.self, from: data)
+        return try JSONDecoder().decode(T.self, from: data)
     }
 
     private static func checkHealth() async throws -> HealthResponse {
-        let url = URL(string: "https://your-service.run.app/health")!
+        let url = URL(string: "\(baseURL)/health")!
 
         var urlRequest = URLRequest(url: url)
         urlRequest.timeoutInterval = 10.0
@@ -190,9 +244,8 @@ extension InvoiceClassifierClient {
 // MARK: - Test/Mock Implementation
 extension InvoiceClassifierClient {
     static let mock = Self(
-        predict: { request in
-            // Return mock response for testing
-            InvoiceClassificationResponse(
+        predictCategory: { request in
+            CategoryPredictionResponse(
                 probabilities: [
                     "marketing:ads": 0.85,
                     "operations:essential": 0.10,
@@ -200,6 +253,18 @@ extension InvoiceClassifierClient {
                 ],
                 topCategory: "marketing:ads",
                 topProbability: 0.85,
+                modelVersion: "1.0.0"
+            )
+        },
+        predictTag: { request in
+            TagPredictionResponse(
+                probabilities: [
+                    "visual-panda": 0.75,
+                    "referral-fee": 0.15,
+                    "accounting": 0.10
+                ],
+                topTag: "visual-panda",
+                topProbability: 0.75,
                 modelVersion: "1.0.0"
             )
         },
@@ -238,12 +303,15 @@ struct InvoiceFeature {
     struct State: Equatable {
         var invoice: Invoice
         var predictedCategory: String?
-        var isLoading = false
+        var predictedTag: String?
+        var pendingRequests = 0
+        var isLoading: Bool { pendingRequests > 0 }
     }
 
     enum Action {
         case classifyButtonTapped
-        case classificationResponse(Result<InvoiceClassificationResponse, Error>)
+        case categoryResponse(Result<CategoryPredictionResponse, Error>)
+        case tagResponse(Result<TagPredictionResponse, Error>)
     }
 
     @Dependency(\.invoiceClassifier) var classifier
@@ -252,7 +320,7 @@ struct InvoiceFeature {
         Reduce { state, action in
             switch action {
             case .classifyButtonTapped:
-                state.isLoading = true
+                state.pendingRequests = 2
 
                 let request = InvoiceClassificationRequest(
                     entityId: state.invoice.entityId,
@@ -265,19 +333,35 @@ struct InvoiceFeature {
                     issueDate: state.invoice.issueDate.formatted(.iso8601.year().month().day())
                 )
 
-                return .run { send in
-                    await send(.classificationResponse(
-                        Result { try await classifier.predict(request) }
-                    ))
-                }
+                return .merge(
+                    .run { send in
+                        await send(.categoryResponse(
+                            Result { try await classifier.predictCategory(request) }
+                        ))
+                    },
+                    .run { send in
+                        await send(.tagResponse(
+                            Result { try await classifier.predictTag(request) }
+                        ))
+                    }
+                )
 
-            case let .classificationResponse(.success(response)):
-                state.isLoading = false
+            case let .categoryResponse(.success(response)):
                 state.predictedCategory = response.topCategory
+                state.pendingRequests -= 1
                 return .none
 
-            case .classificationResponse(.failure):
-                state.isLoading = false
+            case let .tagResponse(.success(response)):
+                state.predictedTag = response.topTag
+                state.pendingRequests -= 1
+                return .none
+
+            case .categoryResponse(.failure):
+                state.pendingRequests -= 1
+                return .none
+
+            case .tagResponse(.failure):
+                state.pendingRequests -= 1
                 return .none
             }
         }
@@ -293,7 +377,6 @@ To avoid cold starts (9.5s), implement a background task that pings the `/health
 
 ```swift
 import Foundation
-import Combine
 import ComposableArchitecture
 
 // MARK: - Keep-Alive Scheduler Client
@@ -329,7 +412,6 @@ actor KeepAliveSchedulerLive {
                     try await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
                     try await pingMLService()
                 } catch {
-                    // Silent failures - don't crash if ping fails
                     print("Keep-alive ping failed: \(error)")
                 }
             }
@@ -367,90 +449,32 @@ extension KeepAliveScheduler: DependencyKey {
 }
 ```
 
-### Integrate Scheduler in App Lifecycle
-
-```swift
-import ComposableArchitecture
-
-@Reducer
-struct AppFeature {
-    struct State: Equatable {
-        // ... your app state
-    }
-
-    enum Action {
-        case onAppear
-        case onDisappear
-    }
-
-    @Dependency(\.keepAliveScheduler) var scheduler
-
-    var body: some ReducerOf<Self> {
-        Reduce { state, action in
-            switch action {
-            case .onAppear:
-                return .run { _ in
-                    await scheduler.start()
-                }
-
-            case .onDisappear:
-                return .run { _ in
-                    await scheduler.stop()
-                }
-            }
-        }
-    }
-}
-```
-
-### Alternative: Combine-Based Timer
-
-If you prefer Combine over async/await:
-
-```swift
-import Combine
-import Foundation
-
-final class KeepAliveSchedulerCombine {
-    private var cancellable: AnyCancellable?
-    private let url = URL(string: "https://your-service.run.app/health")!
-
-    func start() {
-        cancellable = Timer.publish(every: 240, on: .main, in: .common)
-            .autoconnect()
-            .sink { [weak self] _ in
-                self?.ping()
-            }
-    }
-
-    func stop() {
-        cancellable?.cancel()
-        cancellable = nil
-    }
-
-    private func ping() {
-        var request = URLRequest(url: url)
-        request.timeoutInterval = 10.0
-
-        URLSession.shared.dataTask(with: request) { _, _, error in
-            if let error = error {
-                print("Keep-alive ping failed: \(error)")
-            }
-        }.resume()
-    }
-}
-```
-
 ## Migration Checklist
 
-### 1. Replace Modelbit Code
+### 1. Update Request Payload
 
-- [ ] Remove Modelbit SDK/dependencies
-- [ ] Remove Modelbit API keys from configuration
-- [ ] Add new API client code (InvoiceClassifierClient)
-- [ ] Update request payload to match new format
+All field names are now **snake_case**:
 
-### 2. Update Invoice Title Handling
+```swift
+// ❌ OLD (camelCase JSON keys)
+// entityId, ownerId, netPrice, grossPrice, issueDate
+
+// ✅ NEW (snake_case JSON keys via CodingKeys)
+// entity_id, owner_id, net_price, gross_price, issue_date
+```
+
+### 2. Update API Endpoints
+
+```swift
+// ❌ OLD (single endpoint)
+// POST /predict
+
+// ✅ NEW (dual endpoints)
+// POST /predict/category — expense category prediction
+// POST /predict/tag      — expense tag prediction
+```
+
+### 3. Update Invoice Title Handling
 
 **Important:** The ML model uses the **full invoice title**, not just the first word!
 
@@ -460,15 +484,6 @@ let titleNormalized = invoice.title.components(separatedBy: " ").first ?? ""
 
 // ✅ NEW (Cloud Run - full title)
 let invoiceTitle = invoice.title // Use complete title
-```
-
-### 3. Update Date Formatting
-
-```swift
-// Ensure date is in YYYY-MM-DD format
-let dateFormatter = ISO8601DateFormatter()
-dateFormatter.formatOptions = [.withFullDate]
-let issueDate = dateFormatter.string(from: invoice.date)
 ```
 
 ### 4. Implement Keep-Alive Scheduler
@@ -486,10 +501,9 @@ urlRequest.timeoutInterval = 15.0
 
 // Handle failures gracefully
 do {
-    let response = try await classifier.predict(request)
-    // Success
+    let categoryResponse = try await classifier.predictCategory(request)
+    let tagResponse = try await classifier.predictTag(request)
 } catch {
-    // Fallback: retry once or show user message
     print("Classification failed: \(error)")
 }
 ```
@@ -500,28 +514,11 @@ do {
 - [ ] Verify full title is being sent (not normalized)
 - [ ] Test timeout handling for cold starts
 - [ ] Verify keep-alive scheduler is working
-- [ ] Test with network disconnected (error handling)
+- [ ] Test both `/predict/category` and `/predict/tag` endpoints
 
-## Performance Expectations
+## Example Categories (36)
 
-### Cold Start (15+ minutes of inactivity)
-- **First request:** ~9.5 seconds
-- **Breakdown:** Container init (3-4s) + Model load (4-5s) + Inference (0.2s)
-
-### Warm Requests (with keep-alive scheduler)
-- **All requests:** ~0.2 seconds
-- **Consistency:** Scheduler pings every 4 min → service stays warm
-
-### Network Considerations
-- Use 15 second timeout for requests (handles cold starts)
-- Implement retry logic for production use
-- Keep-alive scheduler uses silent failures (non-blocking)
-
-## Example Categories
-
-The model predicts 36 different expense categories:
-
-**Common Categories:**
+Common categories:
 - `marketing:ads` - Advertising and marketing campaigns
 - `marketing:services` - Marketing agency services
 - `operations:essential` - Essential software/tools (GitHub, Slack, etc.)
@@ -532,29 +529,45 @@ The model predicts 36 different expense categories:
 - `office:rent-and-administration` - Office rent
 - `recruitment:services` - Recruitment agencies
 
-Full list of 36 categories can be found in `models/model_metrics.json`.
+Full list of 36 categories can be found in `models/category_model_metrics.json`.
 
-## Support & Troubleshooting
+## Example Tags (17)
 
-### Common Issues
+- `accounting` - Accounting services
+- `benefit-training` - Employee training benefits
+- `benefit-multisport` - Multisport card benefits
+- `benefit-medical-care` - Medical care benefits
+- `benefit-english` - English lessons
+- `benefit-books-formula` - Book budget
+- `benefit-computer-formula` - Computer equipment budget
+- `benefit-insurance` - Insurance benefits
+- `benefit-outing` - Team outing benefits
+- `benefit-psychologist` - Psychological support
+- `benefit-apartments` - Apartment benefits
+- `visual-panda` - Visual Panda design services
+- `legal-advice` - Legal advisory services
+- `referral-fee` - Employee referral fees
+- `esop` - Employee stock option program
+- `dashbit-jose-valim` - Dashbit consulting
+- `BHP` - Occupational health & safety
 
-**1. Timeout Errors**
-- Increase timeout to 15s for first request after inactivity
-- Implement keep-alive scheduler to avoid cold starts
+Full list in `models/tag_model_metrics.json`.
 
-**2. Invalid Response Format**
-- Ensure you're sending `invoice_title` (full title), not `title_normalized`
-- Check date format is YYYY-MM-DD
-- Verify all required fields are present
+## Performance Expectations
 
-**3. Low Confidence Scores**
-- Model returns all 36 category probabilities
-- Use `top_category` and `top_probability` for decision making
-- Consider threshold (e.g., only accept if `top_probability > 0.5`)
+### Cold Start (15+ minutes of inactivity)
+- **First request:** ~9.5 seconds
+- **Breakdown:** Container init (3-4s) + Model load (4-5s) + Inference (0.2s)
 
-### Health Check
+### Warm Requests (with keep-alive scheduler)
+- **All requests:** ~0.2 seconds
 
-Test the service is running:
+### Network Considerations
+- Use 15 second timeout for requests (handles cold starts)
+- Implement retry logic for production use
+- Keep-alive scheduler uses silent failures (non-blocking)
+
+## Health Check
 
 ```bash
 curl https://your-service.run.app/health
@@ -570,22 +583,8 @@ Expected response:
 }
 ```
 
-### API Documentation
+Note: `"healthy"` means **both** category and tag models are loaded.
 
-Interactive API docs available at:
-https://your-service.run.app/docs
+## API Documentation
 
-## Cost & Scaling
-
-- **Current usage:** $0.00/month (within free tier)
-- **Free tier limits:** 2M requests/month, 180k vCPU-seconds/month
-- **Your usage:** ~20-50 requests/day = ~1,500/month (0.075% of limit)
-- **Keep-alive cost:** $0.00 (HTTP requests within free tier)
-
-**No action needed** - service will scale automatically within free tier limits.
-
-## Questions?
-
-For issues with the ML service itself, check the main repository README.md and troubleshooting sections.
-
-For Swift integration questions, share this file with your development team or AI assistant.
+Interactive API docs: https://your-service.run.app/docs

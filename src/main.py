@@ -29,11 +29,28 @@ from src.logging_utils import (
 setup_logging(LOG_LEVEL, LOG_FORMAT)
 logger = logging.getLogger(__name__)
 
+# OpenAPI tag metadata
+openapi_tags = [
+    {
+        "name": "Prediction",
+        "description": "Invoice classification endpoints. Predict expense categories (36 classes) or tags (17 classes).",
+    },
+    {
+        "name": "Health",
+        "description": "Service health monitoring and API information.",
+    },
+]
+
 # Create FastAPI app
 app = FastAPI(
     title="Invoice Classifier API",
-    description="ML-based invoice expense category and tag prediction",
+    description=(
+        "ML-based invoice expense classification API with dual-model architecture. "
+        "Predicts expense categories (36 classes) and tags (17 classes) using LightGBM "
+        "models with TF-IDF text features. Optimized for serverless deployment on Google Cloud Run."
+    ),
     version=MODEL_VERSION,
+    openapi_tags=openapi_tags,
 )
 
 # Add middleware (order matters - last added is executed first)
@@ -123,7 +140,7 @@ class InvoiceRequest(BaseModel):
         }
 
 
-class PredictionResponse(BaseModel):
+class CategoryPredictionResponse(BaseModel):
     """Prediction result with category probabilities."""
     probabilities: Dict[str, float] = Field(..., description="Category probabilities (sorted by confidence)")
     top_category: str = Field(..., description="Most likely category")
@@ -140,6 +157,28 @@ class PredictionResponse(BaseModel):
                 },
                 "top_category": "office:rent",
                 "top_probability": 0.85,
+                "model_version": "1.0.0"
+            }
+        }
+
+
+class TagPredictionResponse(BaseModel):
+    """Prediction result with tag probabilities."""
+    probabilities: Dict[str, float] = Field(..., description="Tag probabilities (sorted by confidence)")
+    top_tag: str = Field(..., description="Most likely tag")
+    top_probability: float = Field(..., description="Confidence score for top tag")
+    model_version: str = Field(..., description="Model version used for prediction")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "probabilities": {
+                    "legal-advice": 0.75,
+                    "benefit-training": 0.15,
+                    "accounting": 0.10
+                },
+                "top_tag": "legal-advice",
+                "top_probability": 0.75,
                 "model_version": "1.0.0"
             }
         }
@@ -180,7 +219,7 @@ async def startup_event():
 
 
 # Routes
-@app.get("/", response_model=dict)
+@app.get("/", response_model=dict, tags=["Health"], operation_id="get_api_info", summary="API information")
 async def root():
     """Root endpoint with API information."""
     return {
@@ -195,7 +234,7 @@ async def root():
     }
 
 
-@app.get("/health", response_model=HealthResponse)
+@app.get("/health", response_model=HealthResponse, tags=["Health"], operation_id="health_check", summary="Health check")
 async def health():
     """Health check endpoint for monitoring and keep-alive."""
     category_loaded = False
@@ -224,7 +263,18 @@ async def health():
     )
 
 
-@app.post("/predict/category", response_model=PredictionResponse)
+@app.post(
+    "/predict/category",
+    response_model=CategoryPredictionResponse,
+    tags=["Prediction"],
+    operation_id="predict_category",
+    summary="Predict expense category",
+    responses={
+        400: {"description": "Invalid input data (e.g., negative price, invalid currency)"},
+        503: {"description": "Category model not loaded"},
+        500: {"description": "Internal prediction error"},
+    },
+)
 async def predict_category(invoice: InvoiceRequest, request: Request):
     """Predict expense category for an invoice.
 
@@ -270,7 +320,7 @@ async def predict_category(invoice: InvoiceRequest, request: Request):
         logger.info(f"Category prediction: {top_category} ({top_probability:.2%})")
 
         # Build response
-        response_data = PredictionResponse(
+        response_data = CategoryPredictionResponse(
             probabilities=probabilities,
             top_category=top_category,
             top_probability=top_probability,
@@ -298,7 +348,18 @@ async def predict_category(invoice: InvoiceRequest, request: Request):
         raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
 
 
-@app.post("/predict/tag", response_model=PredictionResponse)
+@app.post(
+    "/predict/tag",
+    response_model=TagPredictionResponse,
+    tags=["Prediction"],
+    operation_id="predict_tag",
+    summary="Predict expense tag",
+    responses={
+        400: {"description": "Invalid input data (e.g., negative price, invalid currency)"},
+        503: {"description": "Tag model not loaded"},
+        500: {"description": "Internal prediction error"},
+    },
+)
 async def predict_tag(invoice: InvoiceRequest, request: Request):
     """Predict expense tag for an invoice.
 
@@ -344,9 +405,9 @@ async def predict_tag(invoice: InvoiceRequest, request: Request):
         logger.info(f"Tag prediction: {top_tag} ({top_probability:.2%})")
 
         # Build response
-        response_data = PredictionResponse(
+        response_data = TagPredictionResponse(
             probabilities=probabilities,
-            top_category=top_tag,  # Reusing field name for consistency
+            top_tag=top_tag,
             top_probability=top_probability,
             model_version=MODEL_VERSION,
         )

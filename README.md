@@ -1,18 +1,34 @@
 # Invoice Classifier
 
-Fast ML-based invoice expense category prediction API, optimized for deployment on Google Cloud Run with minimal cold start latency.
+Fast ML-based invoice expense category and tag prediction API, optimized for deployment on Google Cloud Run with minimal cold start latency.
 
 ## Features
 
-- **High Accuracy**: 83.17% accuracy on 33 expense categories using TF-IDF text features
-- **Fast Cold Starts**: Optimized for serverless deployment (~3-5 second cold starts)
-- **LightGBM Model**: Faster and lighter than traditional gradient boosting
-- **TF-IDF Text Processing**: Extracts semantic meaning from full invoice titles
-- **REST API**: Simple JSON in/out interface via FastAPI
+- **Dual-Model Architecture**: Separate models for expense categories (36 classes) and tags (17 classes)
+- **High Accuracy**: ~83% accuracy on categories using TF-IDF text features + LightGBM
+- **Fast Cold Starts**: Optimized for serverless deployment (~9.5s end-to-end, ~0.2s when warm)
+- **Shared Preprocessing**: Common feature engineering across both models
+- **REST API**: Simple JSON in/out interface via FastAPI with snake_case field names
 - **Comprehensive Logging**: Request tracking, performance metrics, structured logging (text/JSON)
-- **Comprehensive Metrics**: Detailed model evaluation and monitoring
 - **Free Tier Friendly**: Designed to run within Google Cloud Run free tier (20-50 requests/day)
-- **Environment Variables**: Support for both .env files and cloud environment variables
+
+## Architecture
+
+```text
+Training Pipeline:
+  Category: SQL DB → CSV → train_model_category.py → LightGBM → invoice_classifier.joblib
+  Tag:      SQL DB → CSV → train_model_tag.py      → LightGBM → invoice_tag_classifier.joblib
+
+Inference Pipeline:
+  HTTP Request → FastAPI → predict.py → Model (cached) → JSON Response
+                              ├─ /predict/category → category model
+                              └─ /predict/tag      → tag model
+```
+
+**Key design decisions:**
+- **Separate models** for category and tag — each target has different distributions and class counts
+- **Shared preprocessing** (`preprocessing.py`) — both models use the same feature engineering pipeline (TF-IDF + numerical + categorical + datetime features)
+- **Dual model caching** — both models loaded on startup into global caches for fast inference
 
 ## Quick Start
 
@@ -53,33 +69,12 @@ cp .env.example .env
 # - DATABASE_URL (or DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD)
 ```
 
-**Customizing the SQL Query** (Optional):
-
-If your database schema differs, you can modify the query in `src/fetch_training_data.py` or provide a custom query file:
-
-```bash
-# Create custom query file
-cat > my_query.sql << 'EOF'
-SELECT
-  entity_id as "entityId",
-  owner_id as "ownerId",
-  -- ... your custom query
-FROM your_invoices_table
-WHERE ...
-EOF
-
-# Fetch data with custom query
-uv run python src/fetch_training_data.py --query-file my_query.sql
-```
-
-### Training the Model
+### Training the Models
 
 1. **Configure database credentials**
 
    ```bash
-   # Copy environment template
    cp .env.example .env
-
    # Edit .env and add your PostgreSQL credentials
    # DATABASE_URL=postgresql://user:password@host:5432/database
    ```
@@ -90,53 +85,40 @@ uv run python src/fetch_training_data.py --query-file my_query.sql
    # Test database connection first (optional)
    make test-db
 
-   # Fetch training data
+   # Fetch category training data
    make fetch-data
    ```
 
-   This will:
-   - Connect to your PostgreSQL database
-   - Execute the training data query (see `src/fetch_training_data.py`)
-   - Save results to `data/invoices_training_data.csv`
-   - Show data statistics and category distribution
-
-   **Note**: The query is embedded in `src/fetch_training_data.py` and can be customized if needed.
+   For tag training data, run the SQL query in `queries/fetch_tag_training_data.sql` and export to `data/invoices_tag_training_data.csv`.
 
 3. **Analyze and filter data (recommended)**
 
    ```bash
-   # Analyze data distribution
    make analyze-data
-
-   # Apply hybrid filtering (merges rare categories to parent)
    uv run python src/analyze_data.py --apply-filter hybrid
    ```
 
-   This creates `data/invoices_training_data_filtered.csv` with better class balance.
-
-4. **Train the model**
+4. **Train both models**
 
    ```bash
-   # Option A: Train with filtered data (recommended)
-   uv run python src/train_model.py invoices_training_data_filtered.csv
-
-   # Option B: Train with original data
+   # Train both category and tag models
    make train
+
+   # Or train individually:
+   make train-category
+   make train-tag
    ```
 
-   This will:
-   - Load and prepare the data
-   - Perform 5-fold cross-validation
-   - Train on full dataset
-   - Save model to `models/invoice_classifier.joblib`
-   - Save metrics to `models/model_metrics.json`
-
-   **Recommended**: Use filtered data for ~1% better accuracy and 8% smaller model.
+   Output files:
+   - `models/invoice_classifier.joblib` — category model
+   - `models/invoice_tag_classifier.joblib` — tag model
+   - `models/category_model_metrics.json` — category evaluation metrics
+   - `models/tag_model_metrics.json` — tag evaluation metrics
 
 ### Running Locally
 
 ```bash
-# Start the API server
+# Start the API server (requires both models to be trained)
 make run
 
 # API will be available at http://localhost:8080
@@ -145,17 +127,32 @@ make run
 Test the API:
 
 ```bash
-curl -X POST http://localhost:8080/predict \
+# Category prediction
+curl -X POST http://localhost:8080/predict/category \
   -H "Content-Type: application/json" \
   -d '{
-    "entityId": "00000000-0000-0000-0000-000000000001",
-    "ownerId": "00000000-0000-0000-0000-000000000002",
-    "netPrice": 2500.0,
-    "grossPrice": 3075.0,
+    "entity_id": "00000000-0000-0000-0000-000000000001",
+    "owner_id": "00000000-0000-0000-0000-000000000002",
+    "net_price": 2500.0,
+    "gross_price": 3075.0,
     "currency": "PLN",
     "invoice_title": "Adobe Systems Software Ireland Ltd",
     "tin": "1234567890",
-    "issueDate": "2024-08-29"
+    "issue_date": "2024-08-29"
+  }'
+
+# Tag prediction
+curl -X POST http://localhost:8080/predict/tag \
+  -H "Content-Type: application/json" \
+  -d '{
+    "entity_id": "00000000-0000-0000-0000-000000000001",
+    "owner_id": "00000000-0000-0000-0000-000000000002",
+    "net_price": 2500.0,
+    "gross_price": 3075.0,
+    "currency": "PLN",
+    "invoice_title": "Adobe Systems Software Ireland Ltd",
+    "tin": "1234567890",
+    "issue_date": "2024-08-29"
   }'
 ```
 
@@ -165,7 +162,7 @@ curl -X POST http://localhost:8080/predict \
 # Run tests
 make test
 
-# Test a single prediction
+# Test predictions locally (both models)
 make test-predict
 ```
 
@@ -174,10 +171,7 @@ make test-predict
 ### 1. Build and Test Locally
 
 ```bash
-# Build Docker image
 make docker-build
-
-# Test Docker container locally
 make docker-run
 ```
 
@@ -193,7 +187,7 @@ gcloud run deploy payroll-invoice-classifier \
   --region us-central1 \
   --platform managed \
   --allow-unauthenticated \
-  --memory 512Mi \
+  --memory 1Gi \
   --cpu 1 \
   --max-instances 10 \
   --min-instances 0 \
@@ -203,25 +197,16 @@ gcloud run deploy payroll-invoice-classifier \
 ```
 
 **Deployment Configuration:**
-- **Memory**: 512Mi (optimal for 12MB model)
+- **Memory**: 1Gi (two models loaded simultaneously)
 - **CPU**: 1 vCPU (sufficient for inference)
 - **Min instances**: 0 (scales to zero for free tier)
 - **Max instances**: 10 (handles traffic spikes)
 - **CPU boost**: Enabled (reduces cold start by ~30%)
-- **Timeout**: 60s (allows for cold start initialization)
-- **Port**: 8080 (FastAPI default)
 
 ### 3. Integrate with Your Main Application (Recommended)
 
-To avoid cold starts, implement keep-alive pings from your main application.
+To avoid cold starts, implement keep-alive pings from your main application:
 
-**Cold Start Performance:**
-- First request after inactivity: ~9.5 seconds
-- Subsequent requests (while warm): ~0.22 seconds
-
-**Recommended Approach:** Add a background task in your main app to ping this service every 4-5 minutes while your main app is running. This ensures both services scale together automatically.
-
-**Example (FastAPI):**
 ```python
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
@@ -232,10 +217,8 @@ ML_SERVICE_URL = "https://your-service.run.app"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Start background task to keep ML service warm
     task = asyncio.create_task(keep_ml_service_warm())
     yield
-    # Stop pinging on shutdown
     task.cancel()
     try:
         await task
@@ -249,16 +232,10 @@ async def keep_ml_service_warm():
             try:
                 await client.get(f"{ML_SERVICE_URL}/health")
             except Exception:
-                pass  # Silent failures
+                pass
 
 app = FastAPI(lifespan=lifespan)
 ```
-
-**Benefits:**
-- ✅ $0.00/month (no Cloud Scheduler needed)
-- ✅ Automatic scaling synchronization
-- ✅ ML service only warm when main app is running
-- ✅ Clean, maintainable code
 
 ## API Endpoints
 
@@ -266,7 +243,7 @@ app = FastAPI(lifespan=lifespan)
 Root endpoint with API information.
 
 ### `GET /health`
-Health check endpoint for monitoring and keep-alive.
+Health check endpoint for monitoring and keep-alive. Returns `"healthy"` only when both models are loaded.
 
 **Response:**
 ```json
@@ -278,20 +255,20 @@ Health check endpoint for monitoring and keep-alive.
 }
 ```
 
-### `POST /predict`
-Predict expense category for an invoice.
+### `POST /predict/category`
+Predict expense category for an invoice (36 categories).
 
 **Request:**
 ```json
 {
-  "entityId": "uuid",
-  "ownerId": "uuid",
-  "netPrice": 2500.0,
-  "grossPrice": 3075.0,
+  "entity_id": "00000000-0000-0000-0000-000000000001",
+  "owner_id": "00000000-0000-0000-0000-000000000002",
+  "net_price": 2500.0,
+  "gross_price": 3075.0,
   "currency": "PLN",
   "invoice_title": "Adobe Systems Software Ireland Ltd",
   "tin": "1234567890",
-  "issueDate": "2024-08-29"
+  "issue_date": "2024-08-29"
 }
 ```
 
@@ -299,12 +276,31 @@ Predict expense category for an invoice.
 ```json
 {
   "probabilities": {
-    "office:rent": 0.85,
-    "office:utilities": 0.10,
-    "others:other": 0.05
+    "operations:design": 0.37,
+    "people:training": 0.11,
+    "marketing:services": 0.10
   },
-  "top_category": "office:rent",
-  "top_probability": 0.85,
+  "top_category": "operations:design",
+  "top_probability": 0.37,
+  "model_version": "1.0.0"
+}
+```
+
+### `POST /predict/tag`
+Predict expense tag for an invoice (17 tags).
+
+**Request:** Same format as `/predict/category`.
+
+**Response:**
+```json
+{
+  "probabilities": {
+    "legal-advice": 0.46,
+    "benefit-training": 0.39,
+    "esop": 0.03
+  },
+  "top_tag": "legal-advice",
+  "top_probability": 0.46,
   "model_version": "1.0.0"
 }
 ```
@@ -319,19 +315,14 @@ The API includes comprehensive logging to help track service health and debug is
 ### Logging Features
 
 1. **Request ID Tracking**: Every request gets a unique ID for correlation across logs
-   - Request IDs are included in all log messages
    - Returned in `X-Request-ID` response header
    - Can be provided by client via `X-Request-ID` request header
 
 2. **Performance Metrics**: Request latency tracking
-   - Processing time logged for each request
    - Returned in `X-Process-Time` response header
-   - Format: `X-Process-Time: 245.32ms`
 
 3. **Request/Response Logging**: Optional detailed input/output logging
    - Configurable via environment variables
-   - Helps debug prediction issues
-   - Track what data is being sent to the model
 
 4. **Structured Logging**: Support for both text and JSON formats
    - Text format: Human-readable for development
@@ -339,46 +330,17 @@ The API includes comprehensive logging to help track service health and debug is
 
 ### Configuration
 
-Configure logging via environment variables in `.env`:
-
 ```bash
 # Logging level (debug, info, warning, error)
 LOG_LEVEL=info
 
 # Enable/disable detailed logging
-LOG_REQUESTS=true       # Log full request input data
-LOG_RESPONSES=true      # Log full response output data
-LOG_PERFORMANCE=true    # Log request latency
+LOG_REQUESTS=true
+LOG_RESPONSES=true
+LOG_PERFORMANCE=true
 
 # Logging format (text or json)
-LOG_FORMAT=text         # Use "json" for production/cloud environments
-```
-
-### Example Log Output
-
-**Text Format (Development):**
-```
-2026-01-08 10:15:23 - main - INFO - [abc-123-def] - Predicting category for invoice: Adobe Systems Software Ireland Ltd...
-2026-01-08 10:15:23 - main - INFO - [abc-123-def] - Request input: {
-  "entity_id": "00000000-0000-0000-0000-000000000001",
-  "net_price": 2500.0,
-  ...
-}
-2026-01-08 10:15:23 - main - INFO - [abc-123-def] - Category prediction: marketing:advertising (78.45%)
-2026-01-08 10:15:23 - timing - INFO - [abc-123-def] - request_id=abc-123-def method=POST path=/predict/category status=200 duration=245.32ms
-```
-
-**JSON Format (Production):**
-```json
-{
-  "timestamp": "2026-01-08 10:15:23",
-  "level": "INFO",
-  "logger": "main",
-  "message": "Category prediction: marketing:advertising (78.45%)",
-  "request_id": "abc-123-def",
-  "duration_ms": 245.32,
-  "status_code": 200
-}
+LOG_FORMAT=text
 ```
 
 ### Monitoring in Google Cloud
@@ -387,170 +349,106 @@ When deployed to Cloud Run, all logs are automatically sent to Cloud Logging whe
 - Filter by request ID to see all logs for a specific request
 - Set up alerts for error rates or latency thresholds
 - Create dashboards to visualize request volume and performance
-- Export logs to BigQuery for analysis
 
 **Useful Cloud Logging Filters:**
 ```
-# View all errors
 severity >= ERROR
-
-# View slow requests (>1 second)
 jsonPayload.duration_ms > 1000
-
-# Track a specific request
 jsonPayload.request_id = "abc-123-def"
-
-# View prediction results only
 jsonPayload.message =~ "prediction:"
 ```
 
 ## Model Performance
 
-After training, check `models/model_metrics.json` for detailed metrics:
+After training, check metrics files:
+- `models/category_model_metrics.json` — category model evaluation
+- `models/tag_model_metrics.json` — tag model evaluation
 
-- Cross-validation accuracy
-- Test set accuracy, precision, recall, F1
-- Per-class performance
-- Feature importance
-
-Example metrics:
-```json
-{
-  "training_date": "2026-01-06T23:56:41",
-  "n_samples": 4723,
-  "n_classes": 33,
-  "cv_mean_accuracy": 0.8232,
-  "test_accuracy": 0.8317,
-  "test_precision": 0.8364,
-  "test_f1": 0.8323,
-  "features": {
-    "text_features": 200,
-    "total_features": "TF-IDF + numerical + categorical"
-  }
-}
-```
+Metrics include cross-validation accuracy, test accuracy, precision, recall, F1, per-class performance, and feature importance.
 
 ## Project Structure
 
-```
+```text
 invoice-classifier/
 ├── src/
-│   ├── config.py              # Configuration and settings
-│   ├── fetch_training_data.py # Fetch data from PostgreSQL
-│   ├── train_model.py         # Model training script
-│   ├── predict.py             # Prediction logic
-│   └── main.py                # FastAPI application
+│   ├── config.py                # Configuration and settings
+│   ├── preprocessing.py         # Shared feature engineering
+│   ├── fetch_training_data.py   # Fetch data from PostgreSQL
+│   ├── analyze_data.py          # Data distribution analysis
+│   ├── train_model_category.py  # Category model training
+│   ├── train_model_tag.py       # Tag model training
+│   ├── predict.py               # Prediction logic (both models)
+│   ├── logging_utils.py         # Logging and middleware
+│   └── main.py                  # FastAPI application
 ├── tests/
-│   └── test_api.py            # API tests
+│   └── test_api.py              # API tests
 ├── examples/
-│   ├── invoice_*.json         # Example requests
-│   └── test_api.sh            # Test script
-├── models/                    # Trained models (gitignored)
-├── data/                      # Training data (gitignored)
-├── Dockerfile                 # Optimized container image
-├── Makefile                   # Convenient commands
-├── pyproject.toml             # Python dependencies
-└── .env.example               # Environment variables template
+│   ├── invoice_*.json           # Example requests
+│   ├── api_responses.md         # Full API response documentation
+│   └── test_api.sh              # Test script
+├── queries/
+│   └── fetch_tag_training_data.sql  # Tag training data query
+├── models/                      # Trained models (gitignored)
+├── data/                        # Training data (gitignored)
+├── Dockerfile                   # Optimized container image
+├── Makefile                     # Convenient commands
+├── pyproject.toml               # Python dependencies
+└── .env.example                 # Environment variables template
 ```
 
 ## Development
 
 ```bash
-# Install dev dependencies
-make install
-
-# Format code
-make format
-
-# Lint code
-make lint
-
-# Run tests
-make test
+make install       # Install dev dependencies
+make format        # Format code with ruff
+make lint          # Lint code with ruff
+make test          # Run tests
 ```
 
-## Performance Optimization
+## Performance
 
-### Cold Start Optimization
-- **Multi-stage Docker build**: Reduces image size
-- **Slim Python base**: Uses `python:3.11-slim`
-- **Global model caching**: Model loaded once on startup
-- **Single worker**: Minimal memory footprint
-- **CPU boost**: Enabled for Cloud Run deployment
+### Cold Start (after 15+ minutes of inactivity)
+- **Total time**: ~9.5 seconds
+- Container initialization: ~3-4s, model loading (both models): ~4-5s, first inference: ~0.2s
 
-### Actual Performance (Measured on Google Cloud Run)
+### Warm Requests (with keep-alive)
+- **Average**: ~0.2 seconds (44x faster than cold start)
 
-**Cloud Run Configuration:**
-- **Memory**: 512Mi
-- **CPU**: 1 vCPU
-- **CPU Boost**: Enabled
-- **Region**: us-central1
-
-**Cold Start Performance (after 24h suspension):**
-- **Total time**: 9.54 seconds
-- Breakdown:
-  - Container initialization: ~3-4s
-  - Model loading (12MB): ~4-5s
-  - First inference: ~0.2s
-  - Network overhead (DNS/TCP/TLS): ~0.2s
-
-**Warm Request Performance:**
-- **Average**: 0.22 seconds (44x faster than cold start)
-- Consistent across multiple requests
-
-**Container Metrics:**
+### Container Metrics
 - **Image size**: ~450MB
-- **Memory usage**: ~350-400MB
-- **Model size**: 12.14 MB
-
-**Performance Impact:**
-- Without keep-alive: ~9.5s cold start every 15+ minutes of inactivity
-- With keep-alive from main app: ~0.2s for all requests (free, automatic scaling)
+- **Memory usage**: ~400-500MB (two models)
 
 ## Cost Estimation
 
 ### Google Cloud Run Free Tier
-- **Requests**: 2M/month (your usage: ~1,500/month = 0.075%)
-- **CPU**: 180k vCPU-seconds/month (your usage: ~300s = 0.17%)
-- **Memory**: 360k GiB-seconds/month (your usage: ~150s = 0.04%)
+- **Requests**: 2M/month (usage: ~1,500/month = 0.075%)
+- **CPU**: 180k vCPU-seconds/month (usage: ~300s = 0.17%)
+- **Memory**: 360k GiB-seconds/month (usage: ~150s = 0.04%)
 
-**Result**: $0.00/month for your traffic volume
+**Result**: $0.00/month for current traffic volume.
 
 ## Troubleshooting
 
 ### Model not found error
 ```bash
-# Train the model first
+# Train both models
 make train
 ```
 
 ### Cold starts too slow
-Implement keep-alive pings from your main application. See the "Integrate with Your Main Application" section in the deployment guide for code examples.
+Implement keep-alive pings from your main application. See the deployment section above.
 
 ### Out of memory
 ```bash
-# Increase memory in deployment
+# Increase memory (two models need more headroom)
 gcloud run services update payroll-invoice-classifier --memory 1Gi
 ```
 
 ### Port conflicts locally
 ```bash
-# Change port in .env
 PORT=8000 make run
 ```
 
 ## License
 
-MIT License - see LICENSE file for details
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Run tests: `make test`
-5. Submit a pull request
-
-## Support
-
-For issues and questions, please open a GitHub issue.
+MIT License - see LICENSE file for details.

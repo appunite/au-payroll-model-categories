@@ -44,7 +44,13 @@ make run
 ### Using curl
 
 ```bash
-curl -X POST http://localhost:8080/predict \
+# Category prediction
+curl -X POST http://localhost:8080/predict/category \
+  -H "Content-Type: application/json" \
+  -d @examples/invoice_office_rent.json
+
+# Tag prediction
+curl -X POST http://localhost:8080/predict/tag \
   -H "Content-Type: application/json" \
   -d @examples/invoice_office_rent.json
 ```
@@ -52,19 +58,29 @@ curl -X POST http://localhost:8080/predict \
 ### Using httpie (if installed)
 
 ```bash
-http POST http://localhost:8080/predict < examples/invoice_office_rent.json
+# Category prediction
+http POST http://localhost:8080/predict/category < examples/invoice_office_rent.json
+
+# Tag prediction
+http POST http://localhost:8080/predict/tag < examples/invoice_office_rent.json
 ```
 
 ### Using Python
 
 ```python
+import json
 import requests
 
 with open('examples/invoice_office_rent.json') as f:
     data = json.load(f)
 
-response = requests.post('http://localhost:8080/predict', json=data)
-print(response.json())
+# Category prediction
+category = requests.post('http://localhost:8080/predict/category', json=data)
+print(category.json())
+
+# Tag prediction
+tag = requests.post('http://localhost:8080/predict/tag', json=data)
+print(tag.json())
 ```
 
 ## Creating Custom Test Cases
@@ -87,7 +103,13 @@ Create a new JSON file with the invoice structure:
 Then test it:
 
 ```bash
-curl -X POST http://localhost:8080/predict \
+# Category prediction
+curl -X POST http://localhost:8080/predict/category \
+  -H "Content-Type: application/json" \
+  -d @your_invoice.json
+
+# Tag prediction
+curl -X POST http://localhost:8080/predict/tag \
   -H "Content-Type: application/json" \
   -d @your_invoice.json
 ```
