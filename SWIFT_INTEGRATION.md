@@ -304,7 +304,8 @@ struct InvoiceFeature {
         var invoice: Invoice
         var predictedCategory: String?
         var predictedTag: String?
-        var isLoading = false
+        var pendingRequests = 0
+        var isLoading: Bool { pendingRequests > 0 }
     }
 
     enum Action {
@@ -319,7 +320,7 @@ struct InvoiceFeature {
         Reduce { state, action in
             switch action {
             case .classifyButtonTapped:
-                state.isLoading = true
+                state.pendingRequests = 2
 
                 let request = InvoiceClassificationRequest(
                     entityId: state.invoice.entityId,
@@ -347,15 +348,20 @@ struct InvoiceFeature {
 
             case let .categoryResponse(.success(response)):
                 state.predictedCategory = response.topCategory
-                state.isLoading = false
+                state.pendingRequests -= 1
                 return .none
 
             case let .tagResponse(.success(response)):
                 state.predictedTag = response.topTag
+                state.pendingRequests -= 1
                 return .none
 
-            case .categoryResponse(.failure), .tagResponse(.failure):
-                state.isLoading = false
+            case .categoryResponse(.failure):
+                state.pendingRequests -= 1
+                return .none
+
+            case .tagResponse(.failure):
+                state.pendingRequests -= 1
                 return .none
             }
         }

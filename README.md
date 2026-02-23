@@ -6,7 +6,7 @@ Fast ML-based invoice expense category and tag prediction API, optimized for dep
 
 - **Dual-Model Architecture**: Separate models for expense categories (36 classes) and tags (17 classes)
 - **High Accuracy**: ~83% accuracy on categories using TF-IDF text features + LightGBM
-- **Fast Cold Starts**: Optimized for serverless deployment (~3-5 second cold starts)
+- **Fast Cold Starts**: Optimized for serverless deployment (~9.5s end-to-end, ~0.2s when warm)
 - **Shared Preprocessing**: Common feature engineering across both models
 - **REST API**: Simple JSON in/out interface via FastAPI with snake_case field names
 - **Comprehensive Logging**: Request tracking, performance metrics, structured logging (text/JSON)

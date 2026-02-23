@@ -104,11 +104,13 @@ test_tag_prediction() {
     fi
 }
 
+FAILED=0
+
 # Test each example file
 for example_file in "$EXAMPLES_DIR"/invoice_*.json; do
     if [ -f "$example_file" ]; then
-        test_category_prediction "$example_file" || true
-        test_tag_prediction "$example_file" || true
+        test_category_prediction "$example_file" || FAILED=1
+        test_tag_prediction "$example_file" || FAILED=1
     fi
 done
 
@@ -126,6 +128,7 @@ if echo "$ERROR_RESPONSE" | grep -q "detail"; then
     echo "$ERROR_RESPONSE" | python3 -m json.tool
 else
     echo -e "${RED}✗ Category error handling failed${NC}"
+    FAILED=1
 fi
 
 echo -e "\n${BLUE}5b. Invalid data → /predict/tag${NC}"
@@ -138,8 +141,11 @@ if echo "$TAG_ERROR_RESPONSE" | grep -q "detail"; then
     echo "$TAG_ERROR_RESPONSE" | python3 -m json.tool
 else
     echo -e "${RED}✗ Tag error handling failed${NC}"
+    FAILED=1
 fi
 
 echo -e "\n${GREEN}================================================"
 echo "All tests completed!"
 echo "================================================${NC}"
+
+exit $FAILED
