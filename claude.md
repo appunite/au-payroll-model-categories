@@ -8,10 +8,15 @@ This document outlines the architectural decisions, best practices, and optimiza
 
 ```
 Training Pipeline:
-SQL Database → CSV Export → train_model.py → LightGBM Model → joblib file
+  Category: SQL DB → CSV → train_model_category.py → LightGBM → invoice_classifier.joblib
+  Tag:      SQL DB → CSV → train_model_tag.py      → LightGBM → invoice_tag_classifier.joblib
+
+Shared preprocessing: src/preprocessing.py (TF-IDF + numerical + categorical + datetime)
 
 Inference Pipeline:
-HTTP Request → FastAPI → predict.py → Model (cached) → JSON Response
+  HTTP Request → FastAPI → predict.py → Model (cached) → JSON Response
+                              ├─ /predict/category → category model (36 classes)
+                              └─ /predict/tag      → tag model (17 classes)
 ```
 
 ### Technology Stack
@@ -45,24 +50,32 @@ FROM python:3.11-slim
 
 #### b) Global Model Caching
 ```python
-# predict.py
-_model_cache = None  # Global variable
+# predict.py — dual caches for both models
+_category_model_cache = None
+_tag_model_cache = None
 
-def load_model():
-    global _model_cache
-    if _model_cache is None:
-        _model_cache = joblib.load(MODEL_PATH)
-    return _model_cache
+def load_category_model():
+    global _category_model_cache
+    if _category_model_cache is None:
+        _category_model_cache = joblib.load(MODEL_PATH)
+    return _category_model_cache
+
+def load_tag_model():
+    global _tag_model_cache
+    if _tag_model_cache is None:
+        _tag_model_cache = joblib.load(TAG_MODEL_PATH)
+    return _tag_model_cache
 ```
 
-**Impact**: Model loaded once per container instance, not per request
+**Impact**: Each model loaded once per container instance, not per request
 
 #### c) Startup Loading
 ```python
 # main.py
 @app.on_event("startup")
 async def startup_event():
-    load_model()  # Pre-load during startup
+    load_category_model()  # Pre-load category model
+    load_tag_model()       # Pre-load tag model
 ```
 
 **Impact**: First request doesn't pay model loading cost
@@ -107,14 +120,15 @@ CMD ["uvicorn", "src.main:app", "--workers", "1"]
 
 ### 3. Memory Optimization
 
-**Memory Budget**: 512Mi for Cloud Run free tier
+**Memory Budget**: 1Gi for Cloud Run (two models loaded simultaneously)
 
 **Breakdown**:
 - Python runtime: ~50MB
 - Dependencies: ~150MB
-- Model: ~50-200MB (depends on training data)
+- Category model: ~50-200MB (depends on training data)
+- Tag model: ~50-200MB (depends on training data)
 - Request handling: ~50MB
-- **Total**: ~300-450MB
+- **Total**: ~350-650MB
 
 **Techniques**:
 - Use `python:3.11-slim` (vs full Python image saves 500MB)
@@ -205,9 +219,11 @@ cv_scores = cross_val_score(pipeline, X, y, cv=cv)
 
 ```python
 class InvoiceRequest(BaseModel):
-    entityId: str
-    netPrice: float = Field(..., gt=0)  # Must be positive
+    entity_id: str
+    net_price: float = Field(..., gt=0)  # Must be positive
     currency: str = Field(..., min_length=3, max_length=3)
+    invoice_title: str = Field(..., min_length=1)
+    issue_date: str  # YYYY-MM-DD
     # ...
 ```
 
@@ -219,12 +235,13 @@ class InvoiceRequest(BaseModel):
 ### 2. Error Handling
 
 ```python
+# Same pattern for both /predict/category and /predict/tag
 try:
-    probabilities = predict_expense_category(...)
+    probabilities = predict_expense_category(...)  # or predict_expense_tag(...)
 except ValueError as e:
     raise HTTPException(status_code=400, detail=str(e))
 except FileNotFoundError as e:
-    raise HTTPException(status_code=503, detail="Model not available")
+    raise HTTPException(status_code=503, detail="Category model not available")
 except Exception as e:
     raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
 ```
@@ -256,7 +273,7 @@ async def health():
 ### 1. Cloud Run Configuration
 
 ```yaml
-Memory: 512Mi          # Sufficient for model + runtime
+Memory: 1Gi            # Two models loaded simultaneously
 CPU: 1                 # Standard for ML inference
 Min instances: 0       # Scale to zero (free tier)
 Max instances: 10      # Handle traffic spikes
@@ -330,8 +347,12 @@ def test_health():
 
 ```python
 @pytest.mark.skipif(not model_exists, reason="Requires trained model")
-def test_predict():
-    response = client.post("/predict", json=payload)
+def test_predict_category():
+    response = client.post("/predict/category", json=payload)
+    assert response.status_code == 200
+
+def test_predict_tag():
+    response = client.post("/predict/tag", json=payload)
     assert response.status_code == 200
 ```
 
@@ -343,12 +364,13 @@ def test_predict():
 ### 3. Local Testing
 
 ```bash
-# Test prediction logic directly
+# Test prediction logic directly (both models)
 python src/predict.py
 
 # Test API locally
 make run
-curl http://localhost:8080/predict -d @test_invoice.json
+curl http://localhost:8080/predict/category -d @test_invoice.json
+curl http://localhost:8080/predict/tag -d @test_invoice.json
 ```
 
 ## Security Best Practices
@@ -367,7 +389,7 @@ USER appuser
 
 All inputs validated by Pydantic:
 - Type checking
-- Range validation (e.g., `netPrice > 0`)
+- Range validation (e.g., `net_price > 0`)
 - String length limits
 
 ### 3. Dependency Management
@@ -392,7 +414,7 @@ dependencies = [
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
-logger.info(f"Predicting category for: {invoice.title_normalized}")
+logger.info(f"Predicting category for: {invoice.invoice_title}")
 ```
 
 **Cloud Run Integration**: Logs automatically sent to Cloud Logging
