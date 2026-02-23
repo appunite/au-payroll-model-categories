@@ -140,7 +140,7 @@ class InvoiceRequest(BaseModel):
         }
 
 
-class PredictionResponse(BaseModel):
+class CategoryPredictionResponse(BaseModel):
     """Prediction result with category probabilities."""
     probabilities: Dict[str, float] = Field(..., description="Category probabilities (sorted by confidence)")
     top_category: str = Field(..., description="Most likely category")
@@ -157,6 +157,28 @@ class PredictionResponse(BaseModel):
                 },
                 "top_category": "office:rent",
                 "top_probability": 0.85,
+                "model_version": "1.0.0"
+            }
+        }
+
+
+class TagPredictionResponse(BaseModel):
+    """Prediction result with tag probabilities."""
+    probabilities: Dict[str, float] = Field(..., description="Tag probabilities (sorted by confidence)")
+    top_tag: str = Field(..., description="Most likely tag")
+    top_probability: float = Field(..., description="Confidence score for top tag")
+    model_version: str = Field(..., description="Model version used for prediction")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "probabilities": {
+                    "legal-advice": 0.75,
+                    "benefit-training": 0.15,
+                    "accounting": 0.10
+                },
+                "top_tag": "legal-advice",
+                "top_probability": 0.75,
                 "model_version": "1.0.0"
             }
         }
@@ -243,7 +265,7 @@ async def health():
 
 @app.post(
     "/predict/category",
-    response_model=PredictionResponse,
+    response_model=CategoryPredictionResponse,
     tags=["Prediction"],
     operation_id="predict_category",
     summary="Predict expense category",
@@ -298,7 +320,7 @@ async def predict_category(invoice: InvoiceRequest, request: Request):
         logger.info(f"Category prediction: {top_category} ({top_probability:.2%})")
 
         # Build response
-        response_data = PredictionResponse(
+        response_data = CategoryPredictionResponse(
             probabilities=probabilities,
             top_category=top_category,
             top_probability=top_probability,
@@ -328,7 +350,7 @@ async def predict_category(invoice: InvoiceRequest, request: Request):
 
 @app.post(
     "/predict/tag",
-    response_model=PredictionResponse,
+    response_model=TagPredictionResponse,
     tags=["Prediction"],
     operation_id="predict_tag",
     summary="Predict expense tag",
@@ -383,9 +405,9 @@ async def predict_tag(invoice: InvoiceRequest, request: Request):
         logger.info(f"Tag prediction: {top_tag} ({top_probability:.2%})")
 
         # Build response
-        response_data = PredictionResponse(
+        response_data = TagPredictionResponse(
             probabilities=probabilities,
-            top_category=top_tag,  # Reusing field name for consistency
+            top_tag=top_tag,
             top_probability=top_probability,
             model_version=MODEL_VERSION,
         )

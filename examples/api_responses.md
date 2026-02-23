@@ -142,7 +142,7 @@ All requests must comply with the following validation rules:
     "BHP": 0.00709888011327466,
     "benefit-apartments": 0.00705094740753674
   },
-  "top_category": "legal-advice",
+  "top_tag": "legal-advice",
   "top_probability": 0.45657710684807895,
   "model_version": "1.0.0"
 }
@@ -150,7 +150,7 @@ All requests must comply with the following validation rules:
 
 **Response Fields**:
 - `probabilities`: Object with all 17 tags and their probability scores (0-1)
-- `top_category`: The tag with the highest probability (note: field name is reused for consistency)
+- `top_tag`: The tag with the highest probability
 - `top_probability`: The probability score for the top tag
 - `model_version`: Version of the model used for prediction
 
@@ -374,14 +374,21 @@ interface InvoiceData {
   issue_date: string; // YYYY-MM-DD
 }
 
-interface PredictionResponse {
+interface CategoryPredictionResponse {
   probabilities: Record<string, number>;
   top_category: string;
   top_probability: number;
   model_version: string;
 }
 
-async function predictCategory(invoice: InvoiceData): Promise<PredictionResponse> {
+interface TagPredictionResponse {
+  probabilities: Record<string, number>;
+  top_tag: string;
+  top_probability: number;
+  model_version: string;
+}
+
+async function predictCategory(invoice: InvoiceData): Promise<CategoryPredictionResponse> {
   const response = await fetch(
     'https://payroll-invoice-classifier-324047048236.us-central1.run.app/predict/category',
     {
@@ -398,7 +405,7 @@ async function predictCategory(invoice: InvoiceData): Promise<PredictionResponse
   return response.json();
 }
 
-async function predictTag(invoice: InvoiceData): Promise<PredictionResponse> {
+async function predictTag(invoice: InvoiceData): Promise<TagPredictionResponse> {
   const response = await fetch(
     'https://payroll-invoice-classifier-324047048236.us-central1.run.app/predict/tag',
     {
@@ -432,7 +439,7 @@ console.log('Category:', categoryResult.top_category); // "operations:design"
 console.log('Confidence:', categoryResult.top_probability); // 0.372
 
 const tagResult = await predictTag(invoice);
-console.log('Tag:', tagResult.top_category); // "legal-advice"
+console.log('Tag:', tagResult.top_tag); // "legal-advice"
 console.log('Confidence:', tagResult.top_probability); // 0.457
 ```
 
@@ -475,7 +482,7 @@ print(f"Category: {category_result['top_category']}")
 print(f"Confidence: {category_result['top_probability']:.2%}")
 
 tag_result = predict_tag(invoice)
-print(f"Tag: {tag_result['top_category']}")
+print(f"Tag: {tag_result['top_tag']}")
 print(f"Confidence: {tag_result['top_probability']:.2%}")
 ```
 
