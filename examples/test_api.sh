@@ -109,15 +109,29 @@ done
 # Test error handling
 echo -e "\n${BLUE}5. Testing error handling (invalid data)...${NC}"
 INVALID_REQUEST='{"entity_id":"test","owner_id":"test","net_price":-100,"gross_price":100,"currency":"PLN","invoice_title":"test","issue_date":"2024-01-01"}'
+
+echo -e "\n${BLUE}5a. Invalid data → /predict/category${NC}"
 ERROR_RESPONSE=$(curl -s -X POST "$BASE_URL/predict/category" \
     -H "Content-Type: application/json" \
     -d "$INVALID_REQUEST")
 
 if echo "$ERROR_RESPONSE" | grep -q "detail"; then
-    echo -e "${GREEN}✓ Error handling works${NC}"
+    echo -e "${GREEN}✓ Category error handling works${NC}"
     echo "$ERROR_RESPONSE" | python3 -m json.tool
 else
-    echo -e "${RED}✗ Error handling failed${NC}"
+    echo -e "${RED}✗ Category error handling failed${NC}"
+fi
+
+echo -e "\n${BLUE}5b. Invalid data → /predict/tag${NC}"
+TAG_ERROR_RESPONSE=$(curl -s -X POST "$BASE_URL/predict/tag" \
+    -H "Content-Type: application/json" \
+    -d "$INVALID_REQUEST")
+
+if echo "$TAG_ERROR_RESPONSE" | grep -q "detail"; then
+    echo -e "${GREEN}✓ Tag error handling works${NC}"
+    echo "$TAG_ERROR_RESPONSE" | python3 -m json.tool
+else
+    echo -e "${RED}✗ Tag error handling failed${NC}"
 fi
 
 echo -e "\n${GREEN}================================================"
