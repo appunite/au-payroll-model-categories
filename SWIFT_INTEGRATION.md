@@ -67,7 +67,7 @@ This guide helps you integrate the payroll invoice classifier (category + tag pr
     "esop": 0.03,
     "...": "..."
   },
-  "top_category": "legal-advice",
+  "top_tag": "legal-advice",
   "top_probability": 0.46,
   "model_version": "1.0.0"
 }
@@ -86,9 +86,15 @@ This guide helps you integrate the payroll invoice classifier (category + tag pr
 | `tin` | String? | No | Tax identification number (can be null or empty string) |
 | `issue_date` | String | Yes | Invoice issue date in YYYY-MM-DD format |
 
-**Response Fields:**
-- `probabilities`: Dictionary of all category/tag names with their probability scores (0.0 to 1.0)
-- `top_category`: The category/tag with the highest probability
+**Category Response Fields:**
+- `probabilities`: Dictionary of all category names with their probability scores (0.0 to 1.0)
+- `top_category`: The category with the highest probability
+- `top_probability`: The probability score of the top prediction
+- `model_version`: Model version used for prediction
+
+**Tag Response Fields:**
+- `probabilities`: Dictionary of all tag names with their probability scores (0.0 to 1.0)
+- `top_tag`: The tag with the highest probability
 - `top_probability`: The probability score of the top prediction
 - `model_version`: Model version used for prediction
 
@@ -122,8 +128,8 @@ struct InvoiceClassificationRequest: Codable {
     }
 }
 
-// MARK: - Response Model
-struct InvoiceClassificationResponse: Codable {
+// MARK: - Category Response Model
+struct CategoryPredictionResponse: Codable {
     let probabilities: [String: Double]
     let topCategory: String
     let topProbability: Double
@@ -132,6 +138,21 @@ struct InvoiceClassificationResponse: Codable {
     enum CodingKeys: String, CodingKey {
         case probabilities
         case topCategory = "top_category"
+        case topProbability = "top_probability"
+        case modelVersion = "model_version"
+    }
+}
+
+// MARK: - Tag Response Model
+struct TagPredictionResponse: Codable {
+    let probabilities: [String: Double]
+    let topTag: String
+    let topProbability: Double
+    let modelVersion: String
+
+    enum CodingKeys: String, CodingKey {
+        case probabilities
+        case topTag = "top_tag"
         case topProbability = "top_probability"
         case modelVersion = "model_version"
     }
@@ -161,8 +182,8 @@ import ComposableArchitecture
 
 // MARK: - API Client Interface
 struct InvoiceClassifierClient {
-    var predictCategory: (InvoiceClassificationRequest) async throws -> InvoiceClassificationResponse
-    var predictTag: (InvoiceClassificationRequest) async throws -> InvoiceClassificationResponse
+    var predictCategory: (InvoiceClassificationRequest) async throws -> CategoryPredictionResponse
+    var predictTag: (InvoiceClassificationRequest) async throws -> TagPredictionResponse
     var health: () async throws -> HealthResponse
 }
 
@@ -172,10 +193,10 @@ extension InvoiceClassifierClient {
 
     static let live = Self(
         predictCategory: { request in
-            try await postRequest(request, endpoint: "/predict/category")
+            try await postRequest(request, endpoint: "/predict/category", responseType: CategoryPredictionResponse.self)
         },
         predictTag: { request in
-            try await postRequest(request, endpoint: "/predict/tag")
+            try await postRequest(request, endpoint: "/predict/tag", responseType: TagPredictionResponse.self)
         },
         health: {
             try await checkHealth()
@@ -183,10 +204,11 @@ extension InvoiceClassifierClient {
     )
 
     // MARK: - Network Implementation
-    private static func postRequest(
+    private static func postRequest<T: Decodable>(
         _ request: InvoiceClassificationRequest,
-        endpoint: String
-    ) async throws -> InvoiceClassificationResponse {
+        endpoint: String,
+        responseType: T.Type
+    ) async throws -> T {
         let url = URL(string: "\(baseURL)\(endpoint)")!
 
         var urlRequest = URLRequest(url: url)
@@ -205,7 +227,7 @@ extension InvoiceClassifierClient {
             throw URLError(.init(rawValue: httpResponse.statusCode))
         }
 
-        return try JSONDecoder().decode(InvoiceClassificationResponse.self, from: data)
+        return try JSONDecoder().decode(T.self, from: data)
     }
 
     private static func checkHealth() async throws -> HealthResponse {
@@ -223,7 +245,7 @@ extension InvoiceClassifierClient {
 extension InvoiceClassifierClient {
     static let mock = Self(
         predictCategory: { request in
-            InvoiceClassificationResponse(
+            CategoryPredictionResponse(
                 probabilities: [
                     "marketing:ads": 0.85,
                     "operations:essential": 0.10,
@@ -235,13 +257,13 @@ extension InvoiceClassifierClient {
             )
         },
         predictTag: { request in
-            InvoiceClassificationResponse(
+            TagPredictionResponse(
                 probabilities: [
                     "visual-panda": 0.75,
                     "referral-fee": 0.15,
                     "accounting": 0.10
                 ],
-                topCategory: "visual-panda",
+                topTag: "visual-panda",
                 topProbability: 0.75,
                 modelVersion: "1.0.0"
             )
@@ -287,8 +309,8 @@ struct InvoiceFeature {
 
     enum Action {
         case classifyButtonTapped
-        case categoryResponse(Result<InvoiceClassificationResponse, Error>)
-        case tagResponse(Result<InvoiceClassificationResponse, Error>)
+        case categoryResponse(Result<CategoryPredictionResponse, Error>)
+        case tagResponse(Result<TagPredictionResponse, Error>)
     }
 
     @Dependency(\.invoiceClassifier) var classifier
@@ -329,7 +351,7 @@ struct InvoiceFeature {
                 return .none
 
             case let .tagResponse(.success(response)):
-                state.predictedTag = response.topCategory
+                state.predictedTag = response.topTag
                 return .none
 
             case .categoryResponse(.failure), .tagResponse(.failure):

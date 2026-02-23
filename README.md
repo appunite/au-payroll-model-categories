@@ -299,7 +299,7 @@ Predict expense tag for an invoice (17 tags).
     "benefit-training": 0.39,
     "esop": 0.03
   },
-  "top_category": "legal-advice",
+  "top_tag": "legal-advice",
   "top_probability": 0.46,
   "model_version": "1.0.0"
 }
@@ -368,7 +368,7 @@ Metrics include cross-validation accuracy, test accuracy, precision, recall, F1,
 
 ## Project Structure
 
-```
+```text
 invoice-classifier/
 ├── src/
 │   ├── config.py                # Configuration and settings

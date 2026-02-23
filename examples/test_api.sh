@@ -43,13 +43,15 @@ fi
 # Test category prediction with different invoice types
 test_category_prediction() {
     local file=$1
-    local name=$(basename "$file" .json)
+    local name
+    name=$(basename "$file" .json)
 
     echo -e "\n${BLUE}3. Testing category prediction: $name${NC}"
     echo "Request:"
     cat "$file" | python3 -m json.tool
 
     echo -e "\nResponse:"
+    local PREDICTION
     PREDICTION=$(curl -s -X POST "$BASE_URL/predict/category" \
         -H "Content-Type: application/json" \
         -d @"$file")
@@ -60,6 +62,7 @@ test_category_prediction() {
         echo -e "${GREEN}✓ Category prediction successful${NC}"
 
         # Extract top category
+        local TOP_CATEGORY TOP_PROB
         TOP_CATEGORY=$(echo "$PREDICTION" | python3 -c "import sys, json; data=json.load(sys.stdin); print(data['top_category'])")
         TOP_PROB=$(echo "$PREDICTION" | python3 -c "import sys, json; data=json.load(sys.stdin); print(f\"{data['top_probability']:.2%}\")")
         echo -e "  Top prediction: ${GREEN}$TOP_CATEGORY${NC} (${GREEN}$TOP_PROB${NC})"
@@ -72,13 +75,15 @@ test_category_prediction() {
 # Test tag prediction with different invoice types
 test_tag_prediction() {
     local file=$1
-    local name=$(basename "$file" .json)
+    local name
+    name=$(basename "$file" .json)
 
     echo -e "\n${BLUE}4. Testing tag prediction: $name${NC}"
     echo "Request:"
     cat "$file" | python3 -m json.tool
 
     echo -e "\nResponse:"
+    local PREDICTION
     PREDICTION=$(curl -s -X POST "$BASE_URL/predict/tag" \
         -H "Content-Type: application/json" \
         -d @"$file")
@@ -89,7 +94,8 @@ test_tag_prediction() {
         echo -e "${GREEN}✓ Tag prediction successful${NC}"
 
         # Extract top tag
-        TOP_TAG=$(echo "$PREDICTION" | python3 -c "import sys, json; data=json.load(sys.stdin); print(data['top_category'])")
+        local TOP_TAG TOP_PROB
+        TOP_TAG=$(echo "$PREDICTION" | python3 -c "import sys, json; data=json.load(sys.stdin); print(data['top_tag'])")
         TOP_PROB=$(echo "$PREDICTION" | python3 -c "import sys, json; data=json.load(sys.stdin); print(f\"{data['top_probability']:.2%}\")")
         echo -e "  Top prediction: ${GREEN}$TOP_TAG${NC} (${GREEN}$TOP_PROB${NC})"
     else
@@ -101,8 +107,8 @@ test_tag_prediction() {
 # Test each example file
 for example_file in "$EXAMPLES_DIR"/invoice_*.json; do
     if [ -f "$example_file" ]; then
-        test_category_prediction "$example_file"
-        test_tag_prediction "$example_file"
+        test_category_prediction "$example_file" || true
+        test_tag_prediction "$example_file" || true
     fi
 done
 

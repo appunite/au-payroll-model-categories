@@ -81,7 +81,7 @@ def test_predict_tag():
 
     data = response.json()
     assert "probabilities" in data
-    assert "top_category" in data
+    assert "top_tag" in data
     assert "top_probability" in data
     assert "model_version" in data
 
