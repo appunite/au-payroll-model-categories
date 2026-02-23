@@ -14,7 +14,7 @@ Fast ML-based invoice expense category and tag prediction API, optimized for dep
 
 ## Architecture
 
-```
+```text
 Training Pipeline:
   Category: SQL DB → CSV → train_model_category.py → LightGBM → invoice_classifier.joblib
   Tag:      SQL DB → CSV → train_model_tag.py      → LightGBM → invoice_tag_classifier.joblib
