@@ -140,6 +140,10 @@ docker-run:
 # Deploy to Google Cloud Run
 deploy:
 	@echo "Deploying to Google Cloud Run..."
+	@echo ""
+	@echo "  GCP project: $$(gcloud config get-value project 2>/dev/null)"
+	@echo "  To change:   gcloud config set project <PROJECT_ID>"
+	@echo ""
 	@if [ ! -f models/invoice_classifier.joblib ]; then \
 		echo "ERROR: Category model not found. Please run 'make train-category' first."; \
 		exit 1; \
@@ -148,8 +152,8 @@ deploy:
 		echo "ERROR: Tag model not found. Please run 'make train-tag' first."; \
 		exit 1; \
 	fi
-	@read -p "Enter Cloud Run service name [payroll-invoice-classifier]: " SERVICE_NAME; \
-	SERVICE_NAME=$${SERVICE_NAME:-payroll-invoice-classifier}; \
+	@read -p "Enter Cloud Run service name [invoice-classifier]: " SERVICE_NAME; \
+	SERVICE_NAME=$${SERVICE_NAME:-invoice-classifier}; \
 	read -p "Enter GCP region [us-central1]: " REGION; \
 	REGION=$${REGION:-us-central1}; \
 	echo "Deploying $$SERVICE_NAME to $$REGION..."; \

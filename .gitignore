@@ -41,6 +41,9 @@ htmlcov/
 # Ruff
 .ruff_cache/
 
+# Claude Code
+.claude/
+
 # Environment
 .env
 .env.local
