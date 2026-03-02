@@ -154,8 +154,8 @@ deploy:
 	fi
 	@read -p "Enter Cloud Run service name [invoice-classifier]: " SERVICE_NAME; \
 	SERVICE_NAME=$${SERVICE_NAME:-invoice-classifier}; \
-	read -p "Enter GCP region [us-central1]: " REGION; \
-	REGION=$${REGION:-us-central1}; \
+	read -p "Enter GCP region [europe-west1]: " REGION; \
+	REGION=$${REGION:-europe-west1}; \
 	echo "Deploying $$SERVICE_NAME to $$REGION..."; \
 	gcloud run deploy $$SERVICE_NAME \
 		--source . \

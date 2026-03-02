@@ -188,7 +188,7 @@ make deploy
 # Or deploy with specific settings:
 gcloud run deploy payroll-invoice-classifier \
   --source . \
-  --region us-central1 \
+  --region europe-west1 \
   --platform managed \
   --allow-unauthenticated \
   --memory 1Gi \
