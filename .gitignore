@@ -15,6 +15,7 @@ venv/
 models/*.joblib
 models/*.pkl
 models/*.bin
+models/*.json
 
 # Data files
 data/*.csv
