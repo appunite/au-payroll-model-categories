@@ -127,9 +127,10 @@ make run
 Test the API:
 
 ```bash
-# Category prediction
+# Category prediction (include -H "Authorization: Bearer $TOKEN" when API_TOKEN is set)
 curl -X POST http://localhost:8080/predict/category \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $API_TOKEN" \
   -d '{
     "entity_id": "00000000-0000-0000-0000-000000000001",
     "owner_id": "00000000-0000-0000-0000-000000000002",
@@ -144,6 +145,7 @@ curl -X POST http://localhost:8080/predict/category \
 # Tag prediction
 curl -X POST http://localhost:8080/predict/tag \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $API_TOKEN" \
   -d '{
     "entity_id": "00000000-0000-0000-0000-000000000001",
     "owner_id": "00000000-0000-0000-0000-000000000002",
@@ -155,6 +157,8 @@ curl -X POST http://localhost:8080/predict/tag \
     "issue_date": "2024-08-29"
   }'
 ```
+
+> **Note:** `API_TOKEN` is required. Set it in `.env` or as an environment variable before starting the server.
 
 ### Testing
 
@@ -307,6 +311,38 @@ Predict expense tag for an invoice (17 tags).
 
 ### `GET /docs`
 Interactive API documentation (Swagger UI).
+
+## Authentication & Rate Limiting
+
+### Bearer Token Authentication
+
+Prediction endpoints (`/predict/category`, `/predict/tag`) require a Bearer token when the `API_TOKEN` environment variable is set.
+
+```bash
+# Set the token in .env or as an environment variable
+API_TOKEN=your-secret-token
+
+# Include the token in requests
+curl -X POST http://localhost:8080/predict/category \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your-secret-token" \
+  -d @examples/invoice_software.json
+```
+
+Public endpoints (`/`, `/health`, `/docs`, `/openapi.json`) do not require authentication.
+
+`API_TOKEN` is required — the application will refuse to start without it.
+
+### Rate Limiting
+
+Prediction endpoints are rate-limited per IP address. Default: **60 requests/minute**.
+
+```bash
+# Configure via environment variable
+RATE_LIMIT_RPM=100  # Allow 100 requests per minute per IP
+```
+
+The rate limiter is in-memory (resets on container restart), which is appropriate for Cloud Run's single-worker-per-instance architecture.
 
 ## Logging and Monitoring
 

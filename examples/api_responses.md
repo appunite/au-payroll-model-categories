@@ -332,6 +332,34 @@ All requests must comply with the following validation rules:
 }
 ```
 
+### 401 Unauthorized (Missing or Invalid Token)
+
+**No Authorization header:**
+```json
+{
+  "detail": "Invalid or missing API token"
+}
+```
+
+**Wrong token:**
+```json
+{
+  "detail": "Invalid or missing API token"
+}
+```
+
+> `API_TOKEN` is required. The application will refuse to start without it.
+
+### 429 Too Many Requests (Rate Limit Exceeded)
+
+```json
+{
+  "detail": "Rate limit exceeded"
+}
+```
+
+> Default limit: 60 requests/minute per IP. Configurable via `RATE_LIMIT_RPM` environment variable.
+
 ### 503 Service Unavailable (Model Not Loaded)
 
 ```json
@@ -393,7 +421,10 @@ async function predictCategory(invoice: InvoiceData): Promise<CategoryPrediction
     'https://your-service.run.app/predict/category',
     {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.API_TOKEN}`,
+      },
       body: JSON.stringify(invoice)
     }
   );
@@ -410,7 +441,10 @@ async function predictTag(invoice: InvoiceData): Promise<TagPredictionResponse> 
     'https://your-service.run.app/predict/tag',
     {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.API_TOKEN}`,
+      },
       body: JSON.stringify(invoice)
     }
   );
@@ -446,13 +480,18 @@ console.log('Confidence:', tagResult.top_probability); // 0.457
 ### Python
 
 ```python
+import os
 import requests
 from typing import Dict, Any
+
+API_TOKEN = os.environ["API_TOKEN"]
+HEADERS = {"Authorization": f"Bearer {API_TOKEN}"}
 
 def predict_category(invoice: Dict[str, Any]) -> Dict[str, Any]:
     response = requests.post(
         'https://your-service.run.app/predict/category',
-        json=invoice
+        json=invoice,
+        headers=HEADERS,
     )
     response.raise_for_status()
     return response.json()
@@ -460,7 +499,8 @@ def predict_category(invoice: Dict[str, Any]) -> Dict[str, Any]:
 def predict_tag(invoice: Dict[str, Any]) -> Dict[str, Any]:
     response = requests.post(
         'https://your-service.run.app/predict/tag',
-        json=invoice
+        json=invoice,
+        headers=HEADERS,
     )
     response.raise_for_status()
     return response.json()
@@ -492,6 +532,7 @@ print(f"Confidence: {tag_result['top_probability']:.2%}")
 # Category prediction
 curl -X POST https://your-service.run.app/predict/category \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $API_TOKEN" \
   -d '{
     "entity_id": "00000000-0000-0000-0000-000000000001",
     "owner_id": "00000000-0000-0000-0000-000000000002",
@@ -506,6 +547,7 @@ curl -X POST https://your-service.run.app/predict/category \
 # Tag prediction
 curl -X POST https://your-service.run.app/predict/tag \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $API_TOKEN" \
   -d '{
     "entity_id": "00000000-0000-0000-0000-000000000001",
     "owner_id": "00000000-0000-0000-0000-000000000002",

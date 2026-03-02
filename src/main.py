@@ -2,19 +2,25 @@
 
 import logging
 import re
+import secrets
+import time
+from collections import defaultdict
 from datetime import datetime
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field, field_validator
 
 from src.config import (
     API_HOST,
     API_PORT,
+    API_TOKEN,
     LOG_FORMAT,
     LOG_LEVEL,
     LOG_REQUESTS,
     LOG_RESPONSES,
     MODEL_VERSION,
+    RATE_LIMIT_RPM,
 )
 from src.logging_utils import (
     RequestIDMiddleware,
@@ -33,6 +39,57 @@ from src.predict import (
 # Configure logging with request ID support
 setup_logging(LOG_LEVEL, LOG_FORMAT)
 logger = logging.getLogger(__name__)
+
+# --- Bearer token auth ---
+_bearer_scheme = HTTPBearer(auto_error=False)
+
+
+async def verify_token(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),  # noqa: B008
+) -> None:
+    """Validate Bearer token. Uses constant-time comparison to prevent timing attacks."""
+    if credentials is None or not secrets.compare_digest(
+        credentials.credentials, API_TOKEN
+    ):
+        raise HTTPException(status_code=401, detail="Invalid or missing API token")
+
+
+# --- In-memory per-IP rate limiter ---
+_rate_limit_store: dict[str, list[float]] = defaultdict(list)
+_rate_limit_last_cleanup: float = time.monotonic()
+_CLEANUP_INTERVAL = 60.0  # seconds
+
+
+def _cleanup_rate_limit_store() -> None:
+    """Remove entries older than 60 seconds."""
+    global _rate_limit_last_cleanup
+    now = time.monotonic()
+    if now - _rate_limit_last_cleanup < _CLEANUP_INTERVAL:
+        return
+    _rate_limit_last_cleanup = now
+    cutoff = now - 60.0
+    for ip in list(_rate_limit_store):
+        _rate_limit_store[ip] = [t for t in _rate_limit_store[ip] if t > cutoff]
+        if not _rate_limit_store[ip]:
+            del _rate_limit_store[ip]
+
+
+async def check_rate_limit(request: Request) -> None:
+    """Enforce per-IP rate limiting on prediction endpoints."""
+    _cleanup_rate_limit_store()
+    client_ip = request.client.host if request.client else "unknown"
+    now = time.monotonic()
+    cutoff = now - 60.0
+    timestamps = _rate_limit_store[client_ip]
+    # Trim old entries for this IP
+    _rate_limit_store[client_ip] = [t for t in timestamps if t > cutoff]
+    if len(_rate_limit_store[client_ip]) >= RATE_LIMIT_RPM:
+        raise HTTPException(status_code=429, detail="Rate limit exceeded")
+    _rate_limit_store[client_ip].append(now)
+
+
+# Combined dependency list for prediction endpoints
+_predict_deps = [Depends(verify_token), Depends(check_rate_limit)]
 
 # OpenAPI tag metadata
 openapi_tags = [
@@ -320,7 +377,10 @@ async def health():
     tags=["Prediction"],
     operation_id="predict_category",
     summary="Predict expense category",
+    dependencies=_predict_deps,
     responses={
+        401: {"description": "Invalid or missing API token"},
+        429: {"description": "Rate limit exceeded"},
         400: {"description": "Invalid input data (e.g., negative price, invalid currency)"},
         503: {"description": "Category model not loaded"},
         500: {"description": "Internal prediction error"},
@@ -399,7 +459,10 @@ async def predict_category(invoice: InvoiceRequest, request: Request):
     tags=["Prediction"],
     operation_id="predict_tag",
     summary="Predict expense tag",
+    dependencies=_predict_deps,
     responses={
+        401: {"description": "Invalid or missing API token"},
+        429: {"description": "Rate limit exceeded"},
         400: {"description": "Invalid input data (e.g., negative price, invalid currency)"},
         503: {"description": "Tag model not loaded"},
         500: {"description": "Internal prediction error"},

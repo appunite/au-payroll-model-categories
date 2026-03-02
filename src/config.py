@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     port: int = 8080
     log_level: str = "info"
 
+    # Authentication & rate limiting
+    api_token: str  # Required Bearer token for prediction endpoints
+    rate_limit_rpm: int = 60  # Max requests per minute per IP
+
     # Logging configuration
     log_requests: bool = True  # Log request inputs
     log_responses: bool = True  # Log response outputs
@@ -84,3 +88,5 @@ LOG_REQUESTS = settings.log_requests
 LOG_RESPONSES = settings.log_responses
 LOG_PERFORMANCE = settings.log_performance
 LOG_FORMAT = settings.log_format
+API_TOKEN = settings.api_token
+RATE_LIMIT_RPM = settings.rate_limit_rpm
