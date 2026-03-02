@@ -48,9 +48,7 @@ async def verify_token(
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),  # noqa: B008
 ) -> None:
     """Validate Bearer token. Uses constant-time comparison to prevent timing attacks."""
-    if credentials is None or not secrets.compare_digest(
-        credentials.credentials, API_TOKEN
-    ):
+    if credentials is None or not secrets.compare_digest(credentials.credentials, API_TOKEN):
         raise HTTPException(status_code=401, detail="Invalid or missing API token")
 
 
