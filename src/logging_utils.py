@@ -4,14 +4,14 @@ import json
 import logging
 import time
 import uuid
+from collections.abc import Callable
 from contextvars import ContextVar
-from typing import Callable
 
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 
-from src.config import LOG_FORMAT, LOG_PERFORMANCE
+from src.config import LOG_PERFORMANCE
 
 # Context variable to store request ID across async calls
 request_id_context: ContextVar[str] = ContextVar("request_id", default="")
@@ -133,8 +133,8 @@ def setup_logging(log_level: str, log_format: str = "text"):
     else:
         # Text format with request ID
         formatter = logging.Formatter(
-            fmt='%(asctime)s - %(name)s - %(levelname)s - [%(request_id)s] - %(message)s',
-            datefmt='%Y-%m-%d %H:%M:%S'
+            fmt="%(asctime)s - %(name)s - %(levelname)s - [%(request_id)s] - %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
         )
 
     # Configure root logger
@@ -175,8 +175,7 @@ def log_request_details(logger: logging.Logger, request_data: dict, request_id: 
 
     # Log at INFO level with request ID
     logger.info(
-        f"Request input: {json.dumps(sanitized, indent=2)}",
-        extra={"request_id": request_id}
+        f"Request input: {json.dumps(sanitized, indent=2)}", extra={"request_id": request_id}
     )
 
 
@@ -189,6 +188,5 @@ def log_response_details(logger: logging.Logger, response_data: dict, request_id
         request_id: Request ID for correlation
     """
     logger.info(
-        f"Response output: {json.dumps(response_data, indent=2)}",
-        extra={"request_id": request_id}
+        f"Response output: {json.dumps(response_data, indent=2)}", extra={"request_id": request_id}
     )

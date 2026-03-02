@@ -1,8 +1,8 @@
 """Configuration for invoice classifier."""
 
 from pathlib import Path
-from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Paths
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -23,11 +23,9 @@ class Settings(BaseSettings):
 
     Environment variables take precedence over .env file values.
     """
+
     model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        case_sensitive=False,
-        extra="ignore"
+        env_file=".env", env_file_encoding="utf-8", case_sensitive=False, extra="ignore"
     )
 
     # Model configuration
@@ -66,15 +64,15 @@ CV_FOLDS = 5
 
 # LightGBM parameters (optimized for fast inference)
 LGBM_PARAMS = {
-    'objective': 'multiclass',
-    'boosting_type': 'gbdt',
-    'num_leaves': 31,
-    'learning_rate': 0.05,
-    'n_estimators': 100,
-    'random_state': RANDOM_STATE,
-    'n_jobs': 1,  # Single thread for consistent cold start performance
-    'verbose': -1,
-    'class_weight': 'balanced',  # Handle class imbalance
+    "objective": "multiclass",
+    "boosting_type": "gbdt",
+    "num_leaves": 31,
+    "learning_rate": 0.05,
+    "n_estimators": 100,
+    "random_state": RANDOM_STATE,
+    "n_jobs": 1,  # Single thread for consistent cold start performance
+    "verbose": -1,
+    "class_weight": "balanced",  # Handle class imbalance
 }
 
 # Export commonly used settings

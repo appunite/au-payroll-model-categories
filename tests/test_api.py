@@ -2,6 +2,7 @@
 
 import pytest
 from fastapi.testclient import TestClient
+
 from src.main import app
 
 client = TestClient(app)
@@ -30,7 +31,7 @@ def test_health():
 
 @pytest.mark.skipif(
     True,  # Skip if model not available
-    reason="Requires trained category model"
+    reason="Requires trained category model",
 )
 def test_predict_category():
     """Test category prediction endpoint."""
@@ -42,7 +43,7 @@ def test_predict_category():
         "currency": "PLN",
         "invoice_title": "office rent",
         "tin": "1234567890",
-        "issue_date": "2024-08-29"
+        "issue_date": "2024-08-29",
     }
 
     response = client.post("/predict/category", json=payload)
@@ -61,7 +62,7 @@ def test_predict_category():
 
 @pytest.mark.skipif(
     True,  # Skip if model not available
-    reason="Requires trained tag model"
+    reason="Requires trained tag model",
 )
 def test_predict_tag():
     """Test tag prediction endpoint."""
@@ -73,7 +74,7 @@ def test_predict_tag():
         "currency": "PLN",
         "invoice_title": "office rent",
         "tin": "1234567890",
-        "issue_date": "2024-08-29"
+        "issue_date": "2024-08-29",
     }
 
     response = client.post("/predict/tag", json=payload)
@@ -99,7 +100,7 @@ def test_predict_category_invalid_data():
         "gross_price": 100,
         "currency": "PLN",
         "invoice_title": "test",
-        "issue_date": "2024-08-29"
+        "issue_date": "2024-08-29",
     }
 
     response = client.post("/predict/category", json=payload)
@@ -116,7 +117,7 @@ def test_predict_tag_invalid_data():
         "gross_price": 100,
         "currency": "PLN",
         "invoice_title": "test",
-        "issue_date": "2024-08-29"
+        "issue_date": "2024-08-29",
     }
 
     response = client.post("/predict/tag", json=payload)

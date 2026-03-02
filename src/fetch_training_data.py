@@ -1,7 +1,6 @@
 """Fetch training data from PostgreSQL database and save to CSV."""
 
 import sys
-from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
@@ -11,7 +10,7 @@ from psycopg.rows import dict_row
 from src.config import DATA_DIR, settings
 
 # SQL query from user's original request
-TRAINING_DATA_QUERY = """
+TRAINING_DATA_QUERY = r"""
 SELECT
     i."entityId",
     i."ownerId",
@@ -138,7 +137,7 @@ def fetch_training_data(
 
                 print(f"✓ Fetched {len(df)} records")
                 print(f"\nColumns: {', '.join(df.columns)}")
-                print(f"\nExpense category distribution:")
+                print("\nExpense category distribution:")
                 print(df["expenseCategory"].value_counts())
                 print(f"\nDate range: {df['issueDate'].min()} to {df['issueDate'].max()}")
 
@@ -207,7 +206,7 @@ def main():
                 with conn.cursor() as cur:
                     cur.execute("SELECT version()")
                     version = cur.fetchone()[0]
-                    print(f"✓ Connected successfully!")
+                    print("✓ Connected successfully!")
                     print(f"PostgreSQL version: {version}")
             return
         except Exception as e:
@@ -235,8 +234,8 @@ def main():
         print("\n" + "=" * 60)
         print("✓ Training data fetched successfully!")
         print("=" * 60)
-        print(f"\nNext step: train the model with:")
-        print(f"  make train")
+        print("\nNext step: train the model with:")
+        print("  make train")
 
     except Exception as e:
         print(f"\n❌ Failed to fetch training data: {e}", file=sys.stderr)

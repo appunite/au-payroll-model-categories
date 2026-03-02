@@ -1,28 +1,33 @@
 """FastAPI application for invoice classification."""
 
-from fastapi import FastAPI, HTTPException, Request
-from pydantic import BaseModel, Field, field_validator
-from typing import Dict, Optional
-from datetime import datetime
 import logging
 import re
+from datetime import datetime
 
-from src.predict import (
-    predict_expense_category,
-    predict_expense_tag,
-    load_category_model,
-    load_tag_model
-)
+from fastapi import FastAPI, HTTPException, Request
+from pydantic import BaseModel, Field, field_validator
+
 from src.config import (
-    MODEL_VERSION, API_HOST, API_PORT, LOG_LEVEL,
-    LOG_REQUESTS, LOG_RESPONSES, LOG_PERFORMANCE, LOG_FORMAT
+    API_HOST,
+    API_PORT,
+    LOG_FORMAT,
+    LOG_LEVEL,
+    LOG_REQUESTS,
+    LOG_RESPONSES,
+    MODEL_VERSION,
 )
 from src.logging_utils import (
-    setup_logging,
     RequestIDMiddleware,
     TimingMiddleware,
     log_request_details,
-    log_response_details
+    log_response_details,
+    setup_logging,
+)
+from src.predict import (
+    load_category_model,
+    load_tag_model,
+    predict_expense_category,
+    predict_expense_tag,
 )
 
 # Configure logging with request ID support
@@ -62,25 +67,60 @@ app.add_middleware(RequestIDMiddleware)
 # Request/Response models
 class InvoiceRequest(BaseModel):
     """Invoice data for classification."""
+
     entity_id: str = Field(..., description="Company/entity unique identifier")
     owner_id: str = Field(..., description="Invoice owner unique identifier")
     net_price: float = Field(..., gt=0, description="Net price (excluding VAT)")
     gross_price: float = Field(..., gt=0, description="Gross price (including VAT)")
-    currency: str = Field(..., min_length=3, max_length=3, description="Currency code (e.g., PLN, USD, EUR)")
+    currency: str = Field(
+        ..., min_length=3, max_length=3, description="Currency code (e.g., PLN, USD, EUR)"
+    )
     invoice_title: str = Field(..., min_length=1, description="Full invoice title/description")
-    tin: Optional[str] = Field(None, description="Tax identification number (optional)")
+    tin: str | None = Field(None, description="Tax identification number (optional)")
     issue_date: str = Field(..., description="Invoice issue date (YYYY-MM-DD)")
 
-    @field_validator('currency')
+    @field_validator("currency")
     @classmethod
     def validate_currency(cls, v: str) -> str:
         """Validate currency code against common ISO 4217 codes."""
         # Common currency codes used in the system
         VALID_CURRENCIES = {
-            'PLN', 'USD', 'EUR', 'GBP', 'CHF', 'CZK', 'DKK', 'SEK', 'NOK',
-            'CAD', 'AUD', 'JPY', 'CNY', 'INR', 'BRL', 'MXN', 'ZAR', 'SGD',
-            'HKD', 'NZD', 'KRW', 'TRY', 'RUB', 'AED', 'SAR', 'THB', 'MYR',
-            'IDR', 'PHP', 'VND', 'ILS', 'RON', 'HUF', 'BGN', 'HRK', 'ISK'
+            "PLN",
+            "USD",
+            "EUR",
+            "GBP",
+            "CHF",
+            "CZK",
+            "DKK",
+            "SEK",
+            "NOK",
+            "CAD",
+            "AUD",
+            "JPY",
+            "CNY",
+            "INR",
+            "BRL",
+            "MXN",
+            "ZAR",
+            "SGD",
+            "HKD",
+            "NZD",
+            "KRW",
+            "TRY",
+            "RUB",
+            "AED",
+            "SAR",
+            "THB",
+            "MYR",
+            "IDR",
+            "PHP",
+            "VND",
+            "ILS",
+            "RON",
+            "HUF",
+            "BGN",
+            "HRK",
+            "ISK",
         }
 
         v_upper = v.upper()
@@ -91,37 +131,29 @@ class InvoiceRequest(BaseModel):
             )
         return v_upper
 
-    @field_validator('issue_date')
+    @field_validator("issue_date")
     @classmethod
     def validate_issue_date(cls, v: str) -> str:
         """Validate issue_date format and reasonable range."""
         # Check format (YYYY-MM-DD)
-        if not re.match(r'^\d{4}-\d{2}-\d{2}$', v):
-            raise ValueError(
-                f"Invalid date format '{v}'. Must be YYYY-MM-DD (e.g., 2024-08-29)"
-            )
+        if not re.match(r"^\d{4}-\d{2}-\d{2}$", v):
+            raise ValueError(f"Invalid date format '{v}'. Must be YYYY-MM-DD (e.g., 2024-08-29)")
 
         # Try to parse the date
         try:
-            date_obj = datetime.strptime(v, '%Y-%m-%d')
+            date_obj = datetime.strptime(v, "%Y-%m-%d")
         except ValueError as e:
-            raise ValueError(
-                f"Invalid date '{v}'. {str(e)}"
-            )
+            raise ValueError(f"Invalid date '{v}'. {str(e)}") from e
 
         # Check reasonable range (2000 to present, not future)
         min_date = datetime(2000, 1, 1)
         max_date = datetime.now()
 
         if date_obj < min_date:
-            raise ValueError(
-                f"Date '{v}' is too old. Must be after 2000-01-01"
-            )
+            raise ValueError(f"Date '{v}' is too old. Must be after 2000-01-01")
 
         if date_obj > max_date:
-            raise ValueError(
-                f"Date '{v}' is in the future. Must not be later than today"
-            )
+            raise ValueError(f"Date '{v}' is in the future. Must not be later than today")
 
         return v
 
@@ -135,14 +167,17 @@ class InvoiceRequest(BaseModel):
                 "currency": "PLN",
                 "invoice_title": "Adobe Systems Software Ireland Ltd",
                 "tin": "1234567890",
-                "issue_date": "2024-08-29"
+                "issue_date": "2024-08-29",
             }
         }
 
 
 class CategoryPredictionResponse(BaseModel):
     """Prediction result with category probabilities."""
-    probabilities: Dict[str, float] = Field(..., description="Category probabilities (sorted by confidence)")
+
+    probabilities: dict[str, float] = Field(
+        ..., description="Category probabilities (sorted by confidence)"
+    )
     top_category: str = Field(..., description="Most likely category")
     top_probability: float = Field(..., description="Confidence score for top category")
     model_version: str = Field(..., description="Model version used for prediction")
@@ -153,18 +188,21 @@ class CategoryPredictionResponse(BaseModel):
                 "probabilities": {
                     "office:rent": 0.85,
                     "office:utilities": 0.10,
-                    "others:other": 0.05
+                    "others:other": 0.05,
                 },
                 "top_category": "office:rent",
                 "top_probability": 0.85,
-                "model_version": "1.0.0"
+                "model_version": "1.0.0",
             }
         }
 
 
 class TagPredictionResponse(BaseModel):
     """Prediction result with tag probabilities."""
-    probabilities: Dict[str, float] = Field(..., description="Tag probabilities (sorted by confidence)")
+
+    probabilities: dict[str, float] = Field(
+        ..., description="Tag probabilities (sorted by confidence)"
+    )
     top_tag: str = Field(..., description="Most likely tag")
     top_probability: float = Field(..., description="Confidence score for top tag")
     model_version: str = Field(..., description="Model version used for prediction")
@@ -175,17 +213,18 @@ class TagPredictionResponse(BaseModel):
                 "probabilities": {
                     "legal-advice": 0.75,
                     "benefit-training": 0.15,
-                    "accounting": 0.10
+                    "accounting": 0.10,
                 },
                 "top_tag": "legal-advice",
                 "top_probability": 0.75,
-                "model_version": "1.0.0"
+                "model_version": "1.0.0",
             }
         }
 
 
 class HealthResponse(BaseModel):
     """Health check response."""
+
     status: str
     model_loaded: bool
     model_version: str
@@ -219,7 +258,13 @@ async def startup_event():
 
 
 # Routes
-@app.get("/", response_model=dict, tags=["Health"], operation_id="get_api_info", summary="API information")
+@app.get(
+    "/",
+    response_model=dict,
+    tags=["Health"],
+    operation_id="get_api_info",
+    summary="API information",
+)
 async def root():
     """Root endpoint with API information."""
     return {
@@ -229,12 +274,18 @@ async def root():
             "predict_category": "/predict/category",
             "predict_tag": "/predict/tag",
             "health": "/health",
-            "docs": "/docs"
-        }
+            "docs": "/docs",
+        },
     }
 
 
-@app.get("/health", response_model=HealthResponse, tags=["Health"], operation_id="health_check", summary="Health check")
+@app.get(
+    "/health",
+    response_model=HealthResponse,
+    tags=["Health"],
+    operation_id="health_check",
+    summary="Health check",
+)
 async def health():
     """Health check endpoint for monitoring and keep-alive."""
     category_loaded = False
@@ -259,7 +310,7 @@ async def health():
         status="healthy" if all_loaded else "unhealthy",
         model_loaded=all_loaded,
         model_version=MODEL_VERSION,
-        timestamp=datetime.now().isoformat()
+        timestamp=datetime.now().isoformat(),
     )
 
 
@@ -295,11 +346,7 @@ async def predict_category(invoice: InvoiceRequest, request: Request):
 
         # Log full request details if enabled
         if LOG_REQUESTS:
-            log_request_details(
-                logger,
-                invoice.model_dump(),
-                request_id
-            )
+            log_request_details(logger, invoice.model_dump(), request_id)
 
         # Get predictions
         probabilities = predict_expense_category(
@@ -329,23 +376,21 @@ async def predict_category(invoice: InvoiceRequest, request: Request):
 
         # Log full response details if enabled
         if LOG_RESPONSES:
-            log_response_details(
-                logger,
-                response_data.model_dump(),
-                request_id
-            )
+            log_response_details(logger, response_data.model_dump(), request_id)
 
         return response_data
 
     except ValueError as e:
         logger.error(f"Validation error: {e}", extra={"request_id": request_id})
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except FileNotFoundError as e:
         logger.error(f"Category model not found: {e}", extra={"request_id": request_id})
-        raise HTTPException(status_code=503, detail="Category model not available")
+        raise HTTPException(status_code=503, detail="Category model not available") from e
     except Exception as e:
-        logger.error(f"Category prediction error: {e}", exc_info=True, extra={"request_id": request_id})
-        raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
+        logger.error(
+            f"Category prediction error: {e}", exc_info=True, extra={"request_id": request_id}
+        )
+        raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}") from e
 
 
 @app.post(
@@ -380,11 +425,7 @@ async def predict_tag(invoice: InvoiceRequest, request: Request):
 
         # Log full request details if enabled
         if LOG_REQUESTS:
-            log_request_details(
-                logger,
-                invoice.model_dump(),
-                request_id
-            )
+            log_request_details(logger, invoice.model_dump(), request_id)
 
         # Get predictions
         probabilities = predict_expense_tag(
@@ -414,23 +455,19 @@ async def predict_tag(invoice: InvoiceRequest, request: Request):
 
         # Log full response details if enabled
         if LOG_RESPONSES:
-            log_response_details(
-                logger,
-                response_data.model_dump(),
-                request_id
-            )
+            log_response_details(logger, response_data.model_dump(), request_id)
 
         return response_data
 
     except ValueError as e:
         logger.error(f"Validation error: {e}", extra={"request_id": request_id})
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except FileNotFoundError as e:
         logger.error(f"Tag model not found: {e}", extra={"request_id": request_id})
-        raise HTTPException(status_code=503, detail="Tag model not available")
+        raise HTTPException(status_code=503, detail="Tag model not available") from e
     except Exception as e:
         logger.error(f"Tag prediction error: {e}", exc_info=True, extra={"request_id": request_id})
-        raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}") from e
 
 
 if __name__ == "__main__":

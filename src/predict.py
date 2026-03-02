@@ -1,17 +1,15 @@
 """Prediction logic for invoice classification (category and tag)."""
 
-import pandas as pd
-import joblib
 import warnings
-from typing import Dict
 from datetime import datetime
 
-# Suppress benign sklearn warning about feature names in LightGBM pipeline
-warnings.filterwarnings('ignore', message='X does not have valid feature names')
+import joblib
 
 from src.config import MODEL_PATH, TAG_MODEL_PATH
 from src.preprocessing import prepare_prediction_input
 
+# Suppress benign sklearn warning about feature names in LightGBM pipeline
+warnings.filterwarnings("ignore", message="X does not have valid feature names")
 
 # Global model caches (loaded once on startup)
 _category_model_cache = None
@@ -76,7 +74,7 @@ def predict_expense_category(
     invoice_title: str,
     tin: str | None,
     issueDate: str | datetime,
-) -> Dict[str, float]:
+) -> dict[str, float]:
     """Predict expense category probabilities for an invoice.
 
     Args:
@@ -121,23 +119,22 @@ def predict_expense_category(
         currency=currency,
         invoice_title=invoice_title,
         tin=tin,
-        issueDate=issueDate
+        issueDate=issueDate,
     )
 
     # Get prediction probabilities
     probabilities = pipeline.predict_proba(input_data)[0]
 
     # Get class labels (decode from label encoder)
-    if hasattr(pipeline, 'label_encoder'):
+    if hasattr(pipeline, "label_encoder"):
         class_labels = pipeline.label_encoder.classes_
     else:
         # Fallback: try to get from model
-        class_labels = pipeline.named_steps['model'].classes_
+        class_labels = pipeline.named_steps["model"].classes_
 
     # Create result dictionary
     result = {
-        str(label): float(prob)
-        for label, prob in zip(class_labels, probabilities)
+        str(label): float(prob) for label, prob in zip(class_labels, probabilities, strict=False)
     }
 
     # Sort by probability (highest first)
@@ -155,7 +152,7 @@ def predict_expense_tag(
     invoice_title: str,
     tin: str | None,
     issueDate: str | datetime,
-) -> Dict[str, float]:
+) -> dict[str, float]:
     """Predict expense tag probabilities for an invoice.
 
     Args:
@@ -200,23 +197,22 @@ def predict_expense_tag(
         currency=currency,
         invoice_title=invoice_title,
         tin=tin,
-        issueDate=issueDate
+        issueDate=issueDate,
     )
 
     # Get prediction probabilities
     probabilities = pipeline.predict_proba(input_data)[0]
 
     # Get class labels (decode from label encoder)
-    if hasattr(pipeline, 'label_encoder'):
+    if hasattr(pipeline, "label_encoder"):
         class_labels = pipeline.label_encoder.classes_
     else:
         # Fallback: try to get from model
-        class_labels = pipeline.named_steps['model'].classes_
+        class_labels = pipeline.named_steps["model"].classes_
 
     # Create result dictionary
     result = {
-        str(label): float(prob)
-        for label, prob in zip(class_labels, probabilities)
+        str(label): float(prob) for label, prob in zip(class_labels, probabilities, strict=False)
     }
 
     # Sort by probability (highest first)
@@ -248,8 +244,7 @@ def predict_top_category(
         ('office:rent', 0.85)
     """
     probabilities = predict_expense_category(
-        entityId, ownerId, netPrice, grossPrice, currency,
-        invoice_title, tin, issueDate
+        entityId, ownerId, netPrice, grossPrice, currency, invoice_title, tin, issueDate
     )
 
     # Get top category
@@ -281,8 +276,7 @@ def predict_top_tag(
         ('visual-panda', 0.85)
     """
     probabilities = predict_expense_tag(
-        entityId, ownerId, netPrice, grossPrice, currency,
-        invoice_title, tin, issueDate
+        entityId, ownerId, netPrice, grossPrice, currency, invoice_title, tin, issueDate
     )
 
     # Get top tag
@@ -293,9 +287,9 @@ def predict_top_tag(
 
 if __name__ == "__main__":
     # Example usage for local testing
-    print("="*60)
+    print("=" * 60)
     print("TESTING CATEGORY PREDICTION")
-    print("="*60)
+    print("=" * 60)
 
     category_result = predict_expense_category(
         entityId="00000000-0000-0000-0000-000000000001",
@@ -305,7 +299,7 @@ if __name__ == "__main__":
         currency="PLN",
         invoice_title="Meta Platforms Ireland Limited",
         tin="",
-        issueDate="2024-08-29"
+        issueDate="2024-08-29",
     )
 
     print("\nCategory probabilities:")
@@ -320,14 +314,14 @@ if __name__ == "__main__":
         currency="PLN",
         invoice_title="Meta Platforms Ireland Limited",
         tin="",
-        issueDate="2024-08-29"
+        issueDate="2024-08-29",
     )
 
     print(f"\nTop category: {top_cat} ({top_cat_prob:.2%})")
 
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("TESTING TAG PREDICTION")
-    print("="*60)
+    print("=" * 60)
 
     tag_result = predict_expense_tag(
         entityId="00000000-0000-0000-0000-000000000001",
@@ -337,7 +331,7 @@ if __name__ == "__main__":
         currency="PLN",
         invoice_title="Meta Platforms Ireland Limited",
         tin="",
-        issueDate="2024-08-29"
+        issueDate="2024-08-29",
     )
 
     print("\nTag probabilities:")
@@ -352,7 +346,7 @@ if __name__ == "__main__":
         currency="PLN",
         invoice_title="Meta Platforms Ireland Limited",
         tin="",
-        issueDate="2024-08-29"
+        issueDate="2024-08-29",
     )
 
     print(f"\nTop tag: {top_tag} ({top_tag_prob:.2%})")
