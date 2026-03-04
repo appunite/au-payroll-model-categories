@@ -36,11 +36,5 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Create dummy models for build test
-        run: |
-          mkdir -p models
-          touch models/invoice_classifier.joblib
-          touch models/invoice_tag_classifier.joblib
-
       - name: Build Docker image
         run: docker build -t invoice-classifier:latest .

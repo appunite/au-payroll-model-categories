@@ -41,9 +41,8 @@ ENV PATH="/opt/venv/bin:$PATH" \
 # Copy application code
 COPY src/ ./src/
 
-# Copy trained model (must exist before building Docker image)
-# Note: If model doesn't exist, the container will fail at startup
-COPY models/ ./models/
+# Create models directory (models are mounted at runtime via Docker volumes)
+RUN mkdir -p ./models
 
 # Create non-root user for security
 RUN useradd -m -u 1000 appuser && \

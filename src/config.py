@@ -1,19 +1,20 @@
 """Configuration for invoice classifier."""
 
+import os
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Paths
 PROJECT_ROOT = Path(__file__).parent.parent
-MODEL_DIR = PROJECT_ROOT / "models"
+MODEL_DIR = Path(os.environ.get("MODEL_DIR", PROJECT_ROOT / "models"))
 DATA_DIR = PROJECT_ROOT / "data"
 
 # Ensure directories exist
 MODEL_DIR.mkdir(exist_ok=True)
 DATA_DIR.mkdir(exist_ok=True)
 
-# Model configuration
+# Model configuration (paths configurable for volume-mounted models)
 MODEL_PATH = MODEL_DIR / "invoice_classifier.joblib"  # Category model
 TAG_MODEL_PATH = MODEL_DIR / "invoice_tag_classifier.joblib"  # Tag model
 

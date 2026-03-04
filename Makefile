@@ -119,6 +119,14 @@ test-predict:
 # Build Docker image
 docker-build:
 	@echo "Building Docker image..."
+	docker build -t invoice-classifier:latest .
+	@echo "✓ Docker image built!"
+	@echo "Image size:"
+	@docker images invoice-classifier:latest --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}"
+
+# Run Docker container locally (mounts local models directory)
+docker-run:
+	@echo "Running Docker container..."
 	@if [ ! -f models/invoice_classifier.joblib ]; then \
 		echo "ERROR: Category model not found. Please run 'make train-category' first."; \
 		exit 1; \
@@ -127,52 +135,51 @@ docker-build:
 		echo "ERROR: Tag model not found. Please run 'make train-tag' first."; \
 		exit 1; \
 	fi
-	docker build -t invoice-classifier:latest .
-	@echo "✓ Docker image built!"
-	@echo "Image size:"
-	@docker images invoice-classifier:latest --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}"
-
-# Run Docker container locally
-docker-run:
-	@echo "Running Docker container..."
-	docker run --rm -p 8080:8080 invoice-classifier:latest
+	docker run --rm -p 8080:8080 \
+		-v $(PWD)/models:/app/models:ro \
+		--env-file .env \
+		invoice-classifier:latest
 
 # Deploy to Google Cloud Run
+# Models are mounted from GCS bucket at runtime (not baked into image).
+# See INTEGRATION.md for full setup instructions.
 deploy:
 	@echo "Deploying to Google Cloud Run..."
 	@echo ""
 	@echo "  GCP project: $$(gcloud config get-value project 2>/dev/null)"
 	@echo "  To change:   gcloud config set project <PROJECT_ID>"
 	@echo ""
-	@if [ ! -f models/invoice_classifier.joblib ]; then \
-		echo "ERROR: Category model not found. Please run 'make train-category' first."; \
-		exit 1; \
-	fi
-	@if [ ! -f models/invoice_tag_classifier.joblib ]; then \
-		echo "ERROR: Tag model not found. Please run 'make train-tag' first."; \
-		exit 1; \
-	fi
+	@echo "  NOTE: Models must be uploaded to GCS bucket first."
+	@echo "  See INTEGRATION.md for details."
+	@echo ""
 	@read -p "Enter Cloud Run service name [invoice-classifier]: " SERVICE_NAME; \
 	SERVICE_NAME=$${SERVICE_NAME:-invoice-classifier}; \
 	read -p "Enter GCP region [europe-west1]: " REGION; \
 	REGION=$${REGION:-europe-west1}; \
+	read -p "Enter GCS models bucket []: " MODELS_BUCKET; \
+	if [ -z "$$MODELS_BUCKET" ]; then \
+		echo "ERROR: GCS models bucket is required."; \
+		exit 1; \
+	fi; \
 	echo "Deploying $$SERVICE_NAME to $$REGION..."; \
 	gcloud run deploy $$SERVICE_NAME \
 		--source . \
 		--region $$REGION \
 		--platform managed \
-		--allow-unauthenticated \
+		--no-allow-unauthenticated \
 		--memory 1Gi \
 		--cpu 1 \
 		--max-instances 10 \
 		--min-instances 0 \
 		--cpu-boost \
 		--timeout 60 \
-		--port 8080
+		--port 8080 \
+		--add-volume name=models,type=cloud-storage,bucket=$$MODELS_BUCKET \
+		--add-volume-mount volume=models,mount-path=/app/models
 	@echo "✓ Deployment complete!"
 	@echo ""
 	@echo "NOTE: To avoid cold starts, implement keep-alive pings from your main application."
-	@echo "See README.md deployment section for implementation examples."
+	@echo "See INTEGRATION.md for details."
 
 # Clean generated files
 clean:
