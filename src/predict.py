@@ -23,6 +23,8 @@ _tag_model_cache = None
 # Background loading state
 _models_ready = threading.Event()
 _loading_error: Exception | None = None
+_loading_started = False
+_loading_lock = threading.Lock()
 
 
 def start_background_model_loading():
@@ -30,7 +32,13 @@ def start_background_model_loading():
 
     Both models are loaded in parallel using a thread pool.
     Call `are_models_ready()` to check if loading has completed.
+    Idempotent — subsequent calls are no-ops.
     """
+    global _loading_started
+    with _loading_lock:
+        if _loading_started:
+            return
+        _loading_started = True
     thread = threading.Thread(target=_load_models_background, daemon=True)
     thread.start()
 
@@ -82,10 +90,11 @@ def get_loading_error() -> Exception | None:
 
 def reset_loading_state():
     """Reset all loading state. Only use in tests."""
-    global _category_model_cache, _tag_model_cache, _loading_error
+    global _category_model_cache, _tag_model_cache, _loading_error, _loading_started
     _category_model_cache = None
     _tag_model_cache = None
     _loading_error = None
+    _loading_started = False
     _models_ready.clear()
 
 
