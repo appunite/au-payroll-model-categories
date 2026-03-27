@@ -172,6 +172,7 @@ deploy:
 		--max-instances 10 \
 		--min-instances 0 \
 		--cpu-boost \
+		--execution-environment gen2 \
 		--timeout 60 \
 		--port 8080 \
 		--add-volume name=models,type=cloud-storage,bucket=$$MODELS_BUCKET \

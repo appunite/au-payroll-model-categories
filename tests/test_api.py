@@ -10,10 +10,21 @@ from fastapi.testclient import TestClient
 os.environ["API_TOKEN"] = "test-token"
 
 from src.main import _rate_limit_store, app  # noqa: E402
+from src.predict import _models_ready, reset_loading_state  # noqa: E402
 
 client = TestClient(app)
 
 AUTH_HEADER = {"Authorization": "Bearer test-token"}
+
+VALID_PAYLOAD = {
+    "entity_id": "00000000-0000-0000-0000-000000000001",
+    "owner_id": "00000000-0000-0000-0000-000000000002",
+    "net_price": 2500.0,
+    "gross_price": 3075.0,
+    "currency": "PLN",
+    "invoice_title": "test",
+    "issue_date": "2024-08-29",
+}
 
 
 def test_root():
@@ -39,48 +50,21 @@ def test_health():
 
 def test_predict_category_missing_token():
     """Test that prediction without token returns 401."""
-    payload = {
-        "entity_id": "00000000-0000-0000-0000-000000000001",
-        "owner_id": "00000000-0000-0000-0000-000000000002",
-        "net_price": 2500.0,
-        "gross_price": 3075.0,
-        "currency": "PLN",
-        "invoice_title": "test",
-        "issue_date": "2024-08-29",
-    }
-    response = client.post("/predict/category", json=payload)
+    response = client.post("/predict/category", json=VALID_PAYLOAD)
     assert response.status_code == 401
 
 
 def test_predict_category_invalid_token():
     """Test that prediction with wrong token returns 401."""
-    payload = {
-        "entity_id": "00000000-0000-0000-0000-000000000001",
-        "owner_id": "00000000-0000-0000-0000-000000000002",
-        "net_price": 2500.0,
-        "gross_price": 3075.0,
-        "currency": "PLN",
-        "invoice_title": "test",
-        "issue_date": "2024-08-29",
-    }
     response = client.post(
-        "/predict/category", json=payload, headers={"Authorization": "Bearer wrong-token"}
+        "/predict/category", json=VALID_PAYLOAD, headers={"Authorization": "Bearer wrong-token"}
     )
     assert response.status_code == 401
 
 
 def test_predict_tag_missing_token():
     """Test that tag prediction without token returns 401."""
-    payload = {
-        "entity_id": "00000000-0000-0000-0000-000000000001",
-        "owner_id": "00000000-0000-0000-0000-000000000002",
-        "net_price": 2500.0,
-        "gross_price": 3075.0,
-        "currency": "PLN",
-        "invoice_title": "test",
-        "issue_date": "2024-08-29",
-    }
-    response = client.post("/predict/tag", json=payload)
+    response = client.post("/predict/tag", json=VALID_PAYLOAD)
     assert response.status_code == 401
 
 
@@ -206,3 +190,48 @@ def test_rate_limit():
 
     # Clean up
     _rate_limit_store.clear()
+
+
+class TestWarmingState:
+    """Tests for the background model loading / warming behavior."""
+
+    def setup_method(self):
+        """Reset loading state before each test."""
+        reset_loading_state()
+
+    def teardown_method(self):
+        """Restore models_ready so other tests aren't affected."""
+        _models_ready.set()
+
+    def test_health_returns_warming_when_models_not_ready(self):
+        """Health endpoint should return 200 with status=warming before models load."""
+        response = client.get("/health")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "warming"
+        assert data["model_loaded"] is False
+
+    def test_predict_category_returns_503_when_warming(self):
+        """Category endpoint should return 503 while models are loading."""
+        response = client.post("/predict/category", json=VALID_PAYLOAD, headers=AUTH_HEADER)
+        assert response.status_code == 503
+        assert "warming" in response.json()["detail"].lower()
+
+    def test_predict_tag_returns_503_when_warming(self):
+        """Tag endpoint should return 503 while models are loading."""
+        response = client.post("/predict/tag", json=VALID_PAYLOAD, headers=AUTH_HEADER)
+        assert response.status_code == 503
+        assert "warming" in response.json()["detail"].lower()
+
+    def test_health_returns_unhealthy_on_loading_error(self):
+        """Health should report unhealthy if background loading failed."""
+        import src.predict as predict_module
+
+        predict_module._loading_error = RuntimeError("model file corrupt")
+        _models_ready.set()
+
+        response = client.get("/health")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "unhealthy"
+        assert data["model_loaded"] is False
