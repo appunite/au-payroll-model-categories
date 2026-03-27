@@ -44,6 +44,9 @@ COPY src/ ./src/
 # Create models directory (models are mounted at runtime via Docker volumes)
 RUN mkdir -p ./models
 
+# Pre-compile .pyc files to avoid parsing overhead on cold start
+RUN python -m compileall -q /opt/venv/lib/ ./src/ 2>/dev/null || true
+
 # Create non-root user for security
 RUN useradd -m -u 1000 appuser && \
     chown -R appuser:appuser /app

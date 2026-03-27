@@ -5,11 +5,6 @@ and tag prediction models to ensure consistency.
 """
 
 import pandas as pd
-from sklearn.compose import ColumnTransformer
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.impute import SimpleImputer
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import OneHotEncoder
 
 
 def prepare_invoice_features(df: pd.DataFrame) -> pd.DataFrame:
@@ -53,7 +48,7 @@ def create_preprocessing_pipeline(
     datetime_features: list[str],
     text_feature: str,
     max_tfidf_features: int = 200,
-) -> ColumnTransformer:
+):
     """Create sklearn preprocessing pipeline with TF-IDF for text.
 
     Args:
@@ -66,6 +61,12 @@ def create_preprocessing_pipeline(
     Returns:
         ColumnTransformer for preprocessing
     """
+    from sklearn.compose import ColumnTransformer
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    from sklearn.impute import SimpleImputer
+    from sklearn.pipeline import Pipeline
+    from sklearn.preprocessing import OneHotEncoder
+
     # Numerical transformer
     numerical_transformer = SimpleImputer(strategy="median")
 

@@ -5,6 +5,7 @@ import re
 import secrets
 import time
 from collections import defaultdict
+from contextlib import asynccontextmanager
 from datetime import datetime
 
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -30,10 +31,11 @@ from src.logging_utils import (
     setup_logging,
 )
 from src.predict import (
-    load_category_model,
-    load_tag_model,
+    are_models_ready,
+    get_loading_error,
     predict_expense_category,
     predict_expense_tag,
+    start_background_model_loading,
 )
 
 # Configure logging with request ID support
@@ -101,6 +103,16 @@ openapi_tags = [
     },
 ]
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Load models in background on startup for fast cold starts."""
+    logger.info("Starting Invoice Classifier API...")
+    logger.info(f"Model version: {MODEL_VERSION}")
+    start_background_model_loading()
+    yield
+
+
 # Create FastAPI app
 app = FastAPI(
     title="Invoice Classifier API",
@@ -111,6 +123,7 @@ app = FastAPI(
     ),
     version=MODEL_VERSION,
     openapi_tags=openapi_tags,
+    lifespan=lifespan,
 )
 
 # Add middleware (order matters - last added is executed first)
@@ -280,36 +293,10 @@ class TagPredictionResponse(BaseModel):
 class HealthResponse(BaseModel):
     """Health check response."""
 
-    status: str
+    status: str  # "healthy", "warming", or "unhealthy"
     model_loaded: bool
     model_version: str
     timestamp: str
-
-
-# Load models on startup (important for cold start optimization!)
-@app.on_event("startup")
-async def startup_event():
-    """Load models into memory on startup."""
-    logger.info("Starting Invoice Classifier API...")
-    logger.info(f"Model version: {MODEL_VERSION}")
-
-    # Load category model
-    try:
-        load_category_model()
-        logger.info("Category model loaded successfully!")
-    except Exception as e:
-        logger.error(f"Failed to load category model: {e}")
-        # Continue startup even if model fails - health check will reflect this
-        pass
-
-    # Load tag model
-    try:
-        load_tag_model()
-        logger.info("Tag model loaded successfully!")
-    except Exception as e:
-        logger.error(f"Failed to load tag model: {e}")
-        # Continue startup even if model fails - health check will reflect this
-        pass
 
 
 # Routes
@@ -342,28 +329,24 @@ async def root():
     summary="Health check",
 )
 async def health():
-    """Health check endpoint for monitoring and keep-alive."""
-    category_loaded = False
-    tag_loaded = False
+    """Health check endpoint for monitoring and keep-alive.
 
-    try:
-        model = load_category_model()
-        category_loaded = model is not None
-    except Exception:
-        pass
-
-    try:
-        model = load_tag_model()
-        tag_loaded = model is not None
-    except Exception:
-        pass
-
-    # Both models must be loaded for healthy status
-    all_loaded = category_loaded and tag_loaded
+    Returns 200 in all cases so Cloud Run marks the instance as ready quickly.
+    Status field indicates actual readiness: "healthy", "warming", or "unhealthy".
+    """
+    if not are_models_ready():
+        status = "warming"
+        model_loaded = False
+    elif get_loading_error() is not None:
+        status = "unhealthy"
+        model_loaded = False
+    else:
+        status = "healthy"
+        model_loaded = True
 
     return HealthResponse(
-        status="healthy" if all_loaded else "unhealthy",
-        model_loaded=all_loaded,
+        status=status,
+        model_loaded=model_loaded,
         model_version=MODEL_VERSION,
         timestamp=datetime.now().isoformat(),
     )
@@ -398,6 +381,9 @@ async def predict_category(invoice: InvoiceRequest, request: Request):
         HTTPException: If prediction fails
     """
     request_id = getattr(request.state, "request_id", "unknown")
+
+    if not are_models_ready():
+        raise HTTPException(status_code=503, detail="Service warming up, models are loading")
 
     try:
         logger.info(f"Predicting category for invoice: {invoice.invoice_title[:50]}...")
@@ -480,6 +466,9 @@ async def predict_tag(invoice: InvoiceRequest, request: Request):
         HTTPException: If prediction fails
     """
     request_id = getattr(request.state, "request_id", "unknown")
+
+    if not are_models_ready():
+        raise HTTPException(status_code=503, detail="Service warming up, models are loading")
 
     try:
         logger.info(f"Predicting tag for invoice: {invoice.invoice_title[:50]}...")
