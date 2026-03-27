@@ -25,6 +25,7 @@ _models_ready = threading.Event()
 _loading_error: Exception | None = None
 _loading_started = False
 _loading_lock = threading.Lock()
+_loader_thread: threading.Thread | None = None
 
 
 def start_background_model_loading():
@@ -34,13 +35,13 @@ def start_background_model_loading():
     Call `are_models_ready()` to check if loading has completed.
     Idempotent — subsequent calls are no-ops.
     """
-    global _loading_started
+    global _loading_started, _loader_thread
     with _loading_lock:
         if _loading_started:
             return
         _loading_started = True
-    thread = threading.Thread(target=_load_models_background, daemon=True)
-    thread.start()
+        _loader_thread = threading.Thread(target=_load_models_background, daemon=True)
+        _loader_thread.start()
 
 
 def _load_models_background():
@@ -48,28 +49,28 @@ def _load_models_background():
     global _category_model_cache, _tag_model_cache, _loading_error
 
     try:
+        missing = []
+        if not MODEL_PATH.exists():
+            missing.append(f"Category model not found at {MODEL_PATH}")
+        if not TAG_MODEL_PATH.exists():
+            missing.append(f"Tag model not found at {TAG_MODEL_PATH}")
+
+        if missing:
+            _loading_error = FileNotFoundError("; ".join(missing))
+            logger.error(f"Model files missing: {_loading_error}")
+            return
+
         with ThreadPoolExecutor(max_workers=2) as pool:
-            futures = {}
+            cat_future = pool.submit(joblib.load, MODEL_PATH)
+            tag_future = pool.submit(joblib.load, TAG_MODEL_PATH)
 
-            if MODEL_PATH.exists():
-                logger.info(f"Loading category model from {MODEL_PATH}...")
-                futures["category"] = pool.submit(joblib.load, MODEL_PATH)
-            else:
-                logger.warning(f"Category model not found at {MODEL_PATH}")
+            logger.info(f"Loading category model from {MODEL_PATH}...")
+            _category_model_cache = cat_future.result()
+            logger.info("Category model loaded successfully!")
 
-            if TAG_MODEL_PATH.exists():
-                logger.info(f"Loading tag model from {TAG_MODEL_PATH}...")
-                futures["tag"] = pool.submit(joblib.load, TAG_MODEL_PATH)
-            else:
-                logger.warning(f"Tag model not found at {TAG_MODEL_PATH}")
-
-            if "category" in futures:
-                _category_model_cache = futures["category"].result()
-                logger.info("Category model loaded successfully!")
-
-            if "tag" in futures:
-                _tag_model_cache = futures["tag"].result()
-                logger.info("Tag model loaded successfully!")
+            logger.info(f"Loading tag model from {TAG_MODEL_PATH}...")
+            _tag_model_cache = tag_future.result()
+            logger.info("Tag model loaded successfully!")
 
     except Exception as e:
         _loading_error = e
@@ -90,11 +91,17 @@ def get_loading_error() -> Exception | None:
 
 def reset_loading_state():
     """Reset all loading state. Only use in tests."""
-    global _category_model_cache, _tag_model_cache, _loading_error, _loading_started
-    _category_model_cache = None
-    _tag_model_cache = None
-    _loading_error = None
-    _loading_started = False
+    global _category_model_cache, _tag_model_cache, _loading_error, _loading_started, _loader_thread
+    # Join outside lock to avoid deadlock
+    thread = _loader_thread
+    if thread is not None and thread.is_alive():
+        thread.join(timeout=5)
+    with _loading_lock:
+        _category_model_cache = None
+        _tag_model_cache = None
+        _loading_error = None
+        _loading_started = False
+        _loader_thread = None
     _models_ready.clear()
 
 
