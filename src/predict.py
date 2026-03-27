@@ -202,7 +202,14 @@ def predict_expense_category(
     """
     return _predict_with_pipeline(
         load_category_model(),
-        entityId, ownerId, netPrice, grossPrice, currency, invoice_title, tin, issueDate,
+        entityId,
+        ownerId,
+        netPrice,
+        grossPrice,
+        currency,
+        invoice_title,
+        tin,
+        issueDate,
     )
 
 
@@ -233,7 +240,14 @@ def predict_expense_tag(
     """
     return _predict_with_pipeline(
         load_tag_model(),
-        entityId, ownerId, netPrice, grossPrice, currency, invoice_title, tin, issueDate,
+        entityId,
+        ownerId,
+        netPrice,
+        grossPrice,
+        currency,
+        invoice_title,
+        tin,
+        issueDate,
     )
 
 

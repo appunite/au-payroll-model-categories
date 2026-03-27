@@ -103,6 +103,7 @@ openapi_tags = [
     },
 ]
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Load models in background on startup for fast cold starts."""
